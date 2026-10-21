@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "local-example": {
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "YOUR_MCP_SERVER_PACKAGE"],
+      "env": {"API_KEY": "${YOUR_MCP_API_KEY}"},
+      "allowed_tools": ["search"]
+    },
+    "remote-example": {
+      "enabled": false,
+      "type": "streamable_http",
+      "url": "https://your-server.example/mcp",
+      "headers": {"Authorization": "${YOUR_MCP_AUTHORIZATION}"},
+      "allowed_tools": ["search"]
+    }
+  }
+}
