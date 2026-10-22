@@ -2,7 +2,40 @@
 
 ## 本地体验
 
-默认只监听 `127.0.0.1`。新数据库自动创建 `admin / 123`，已有账号不会被覆盖或重置。可以使用左下角修改密码入口更改密码，之后全部登录会失效。
+默认只监听 `127.0.0.1`，因此 `http://本机局域网IP:8787` 默认无法访问。新数据库自动创建 `admin / 123`，已有账号不会被覆盖或重置。可以使用左下角修改密码入口更改密码，之后全部登录会失效。
+
+## 局域网访问
+
+体验账号不能随服务暴露到局域网。若通过 HTTPS 反向代理访问，先在 `.env` 设置：
+
+```dotenv
+AGENT_HOST=0.0.0.0
+AGENT_PORT=8787
+AGENT_DEMO_ACCOUNT=false
+AGENT_DEPLOYMENT_MODE=production
+AGENT_SECURE_COOKIE=true
+```
+
+然后创建管理员账号并启动：
+
+```powershell
+uv run python -m app --create-user admin --admin
+uv run python -m app
+```
+
+生产模式必须通过 HTTPS 访问，例如 `https://你的域名`。`AGENT_SECURE_COOKIE=true` 时，直接使用 `http://192.168.x.x:8787` 会导致登录后的会话 Cookie 不会被浏览器发送，随后 `/api/threads`、`/api/skills` 等接口会返回 `401`。
+
+如果只是可信局域网内临时测试、暂时没有 HTTPS，可使用开发配置：
+
+```dotenv
+AGENT_HOST=0.0.0.0
+AGENT_PORT=8787
+AGENT_DEMO_ACCOUNT=false
+AGENT_DEPLOYMENT_MODE=development
+AGENT_SECURE_COOKIE=false
+```
+
+然后在同一局域网的设备上打开 `http://这台电脑的局域网IP:8787`。Windows 防火墙还必须允许 TCP `8787` 入站；可以使用 `ipconfig` 查看本机 IPv4 地址。改完 `.env` 后必须重启后端，并清除浏览器中该 IP 的旧 Cookie 后重新登录。若只想临时指定地址，也可以使用 `uv run python -m app --host 0.0.0.0 --port 8787`，但 `AGENT_SECURE_COOKIE` 必须与实际访问协议匹配。
 
 需要其他账号时，在项目根目录运行，密码通过交互输入，不写入命令行：
 

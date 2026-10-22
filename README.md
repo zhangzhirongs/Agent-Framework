@@ -31,6 +31,8 @@ uv run python -m app
 
 打开 <http://127.0.0.1:8787>。全新本地数据库会创建体验账号 **admin / 123**，登录表单已预填。即使暂未配置模型，也能登录、查看技能和设置 MCP；实际对话需要先填写模型配置并重启后端。
 
+默认只允许本机访问。要使用局域网 IP 访问，请先关闭体验账号、创建自己的管理员，并按[运行与维护](docs/operations.md#局域网访问)配置 `AGENT_HOST=0.0.0.0`。通过 HTTP 临时访问时必须关闭 `AGENT_SECURE_COOKIE`；生产环境应使用 HTTPS 并保持 `AGENT_SECURE_COOKIE=true`。
+
 `.env` 中填写自己的值，不要把真实密钥提交到仓库：
 
 ```dotenv

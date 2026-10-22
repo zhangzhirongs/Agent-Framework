@@ -44,6 +44,10 @@ AGENT_GEOFLOW_VERIFY_TLS=true
 
 ## 路径和账号
 
+- `AGENT_HOST`：后端监听地址，默认 `127.0.0.1`；局域网访问可设为 `0.0.0.0`。
+- `AGENT_PORT`：后端监听端口，默认 `8787`。
+- `AGENT_SECURE_COOKIE`：登录 Cookie 是否只通过 HTTPS 发送。生产环境必须为 `true`；使用普通 HTTP 的可信局域网临时测试必须为 `false`，否则登录后接口会返回 `401`。
+
 - `AGENT_DATA_DIR`：数据库与 SDK 对话历史，默认 `data/`。
 - `AGENT_SKILLS_DIR`：技能根目录，默认 `skills/`。
 - `AGENT_MCP_CONFIG`：MCP 配置路径，默认 `mcp.json`。

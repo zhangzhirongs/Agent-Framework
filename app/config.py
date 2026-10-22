@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     geoflow_api_token: SecretStr = SecretStr("")
     geoflow_timeout: int = Field(default=30, ge=5, le=180)
     geoflow_verify_tls: bool = True
+    host: str = "127.0.0.1"
+    port: int = Field(default=8787, ge=1, le=65535)
 
     @model_validator(mode="after")
     def validate_deployment(self):
