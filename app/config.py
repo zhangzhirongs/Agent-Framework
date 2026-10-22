@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     skills_dir: Path = ROOT / "skills"
     mcp_config: Path = ROOT / "mcp.json"
     max_upload_mb: int = Field(default=20, ge=1, le=100)
+    geoflow_base_url: str = ""
+    geoflow_api_token: SecretStr = SecretStr("")
+    geoflow_timeout: int = Field(default=30, ge=5, le=180)
+    geoflow_verify_tls: bool = True
 
     @model_validator(mode="after")
     def validate_deployment(self):

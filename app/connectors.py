@@ -3,21 +3,33 @@
 import json
 import os
 import re
+import shutil
+import sys
 import tempfile
 from contextlib import AsyncExitStack, asynccontextmanager
+from pathlib import Path
 
+import httpx
 from agents.mcp import MCPServerSse, MCPServerStdio, MCPServerStreamableHttp
+from dotenv import dotenv_values
 
+from app.config import ROOT
 from app.skills import NAME
 
 ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
-def expand(value):
+class ConnectorError(Exception):
+    """A safe, actionable connection failure without provider exception text."""
+
+
+def expand(value, environment=None):
+    environment = os.environ if environment is None else environment
+
     def resolve(match):
-        result = os.getenv(match.group(1), "")
+        result = environment.get(match.group(1), "")
         if not result:
-            raise ValueError("MCP 所需环境变量尚未配置")
+            raise ConnectorError(f"缺少环境变量 {match.group(1)}，请在 .env 或服务进程环境中配置")
         return result
 
     return ENV.sub(resolve, value)
@@ -26,6 +38,36 @@ def expand(value):
 class Connectors:
     def __init__(self, path):
         self.path = path
+
+    def parameters(self, config):
+        # Settings reads .env but does not export its values to os.environ.
+        environment = {**dotenv_values(ROOT / ".env"), **os.environ}
+        if config.get("command"):
+            command = expand(config["command"], environment)
+            if command in ("python", "python3"):
+                command = sys.executable
+            if not shutil.which(command):
+                raise ConnectorError(
+                    "找不到启动命令，请安装所需依赖或将 command 设为可执行文件绝对路径"
+                )
+            args = [expand(arg, environment) for arg in config.get("args", [])]
+            cwd = Path(expand(config.get("cwd", str(ROOT)), environment)).expanduser()
+            if not cwd.is_absolute():
+                cwd = ROOT / cwd
+            if not cwd.is_dir():
+                raise ConnectorError("工作目录 cwd 不存在")
+            if args and args[0].endswith(".py") and not (cwd / args[0]).is_file():
+                raise ConnectorError("Python 启动脚本不存在，请检查 args 中的脚本路径")
+            return {
+                "command": command,
+                "args": args,
+                "cwd": str(cwd),
+                "env": {k: expand(v, environment) for k, v in config.get("env", {}).items()},
+            }
+        return {
+            "url": expand(config["url"], environment),
+            "headers": {k: expand(v, environment) for k, v in config.get("headers", {}).items()},
+        }
 
     def configs(self):
         if not self.path.exists():
@@ -51,6 +93,8 @@ class Connectors:
                 raise ValueError("MCP 需要 command 或 url")
             if config.get("command") and not isinstance(config["command"], str):
                 raise ValueError("command 必须是字符串")
+            if "cwd" in config and (not isinstance(config["cwd"], str) or not config["cwd"]):
+                raise ValueError("cwd 必须是非空字符串")
             args = config.get("args", [])
             if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
                 raise ValueError("args 必须是字符串数组")
@@ -77,7 +121,7 @@ class Connectors:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=self.path.parent, prefix=".mcp-")
         try:
-            with os.fdopen(fd, "w") as stream:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
                 json.dump({"mcpServers": servers}, stream, ensure_ascii=False, indent=2)
             os.replace(temporary, self.path)
         finally:
@@ -100,20 +144,33 @@ class Connectors:
                 if allowed is not None:
                     options["tool_filter"] = {"allowed_tool_names": allowed}
                 if config.get("command"):
-                    params = {
-                        "command": config["command"],
-                        "args": config.get("args", []),
-                        "env": {k: expand(v) for k, v in config.get("env", {}).items()},
-                    }
-                    server = MCPServerStdio(params=params, **options)
+                    factory = MCPServerStdio
                 else:
-                    params = {
-                        "url": expand(config["url"]),
-                        "headers": {k: expand(v) for k, v in config.get("headers", {}).items()},
-                    }
                     factory = (
                         MCPServerSse if config.get("type") == "sse" else MCPServerStreamableHttp
                     )
-                    server = factory(params=params, **options)
-                servers.append(await stack.enter_async_context(server))
+                try:
+                    server = factory(params=self.parameters(config), **options)
+                    servers.append(await stack.enter_async_context(server))
+                except Exception as error:
+                    raise ConnectorError(
+                        f"MCP「{name}」连接失败：{connection_reason(error)}"
+                    ) from None
             yield servers
+
+
+def connection_reason(error):
+    if isinstance(error, ConnectorError):
+        return str(error)
+    if isinstance(error, BaseExceptionGroup):
+        return "；".join(dict.fromkeys(connection_reason(item) for item in error.exceptions))
+    if isinstance(error, httpx.HTTPStatusError):
+        status = error.response.status_code
+        if status in (401, 403):
+            return f"认证失败（HTTP {status}），请检查认证环境变量及访问权限"
+        return f"服务返回 HTTP {status}，请检查 MCP 端点地址和传输类型"
+    if isinstance(error, (TimeoutError, httpx.TimeoutException)):
+        return "连接或初始化超时，请检查服务是否启动及网络是否可达"
+    if isinstance(error, httpx.ConnectError):
+        return "无法访问服务，请检查地址、端口、网络及 TLS 证书"
+    return "服务进程退出或 MCP 握手失败，请检查启动脚本、运行依赖和服务端日志"

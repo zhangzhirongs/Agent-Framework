@@ -18,7 +18,7 @@ export async function request<T>(path: string, method = "GET", body?: unknown): 
 }
 
 export type Profile = { id: string; username: string; is_admin: boolean; csrf_token: string };
-export type Skill = { name: string; description: string; author: string; content?: string; resources?: string[] };
+export type Skill = { name: string; display_name?: string; description: string; author: string; content?: string; resources?: string[] };
 export type Attachment = { id: string; name: string; media_type: string };
 export type Message = { id: string; role: string; content: string; file_ids: string[]; skills: string[] };
 export type Run = { id: string; status: string; output: string; error: string; created: number; finished?: number };

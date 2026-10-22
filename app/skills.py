@@ -39,8 +39,13 @@ def metadata(text):
         raise ValueError("技能缺少 description")
     details = data.get("metadata")
     author = details.get("author", "") if isinstance(details, dict) else ""
+    display_name = details.get("display_name", "") if isinstance(details, dict) else ""
+    heading = re.search(r"^#\s+(.+)$", text[match.end():], re.M)
+    if not isinstance(display_name, str) or not display_name.strip():
+        display_name = heading.group(1).strip() if heading else data["name"]
     return {
         "name": data["name"],
+        "display_name": display_name.strip()[:200],
         "description": data["description"][:2000],
         "author": str(author or data.get("author", "未标注"))[:200],
     }
@@ -90,13 +95,16 @@ class Skills:
         root = self.path(name)
         item = metadata(self.resource(name, "SKILL.md"))
         item["content"] = self.resource(name, "SKILL.md")
-        item["resources"] = [
+        resources = [
             p.relative_to(root).as_posix()
-            for p in sorted(root.rglob("*"))
+            for p in root.rglob("*")
             if p.is_file()
             and not p.is_symlink()
             and not any(x.startswith(".") for x in p.relative_to(root).parts)
         ]
+        item["resources"] = ["SKILL.md"] + sorted(
+            resource for resource in resources if resource != "SKILL.md"
+        )
         return item
 
     def install(self, files):

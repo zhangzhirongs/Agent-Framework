@@ -13,7 +13,7 @@
 - 作品：NASA Apollo 8，Earthrise，编号 `as08-14-2383`。
 - 来源：[NASA 图片档案](https://images.nasa.gov/details/as08-14-2383)。
 - 下载来源：`https://images-assets.nasa.gov/image/as08-14-2383/as08-14-2383~medium.jpg`。
-- 使用说明：[NASA Images and Media Usage Guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/)。
+- 使用说明：[NASA 图像与媒体使用指南](https://www.nasa.gov/nasa-brand-center/images-and-media/)。
 - 该美国联邦政府作品在美国属于公共领域；保留 NASA / Apollo 8 署名，不暗示 NASA 为本框架背书。
 
 封面是静态 JPEG，不依赖远程热链、WebGL、视频或动画。

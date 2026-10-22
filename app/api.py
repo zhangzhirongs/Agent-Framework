@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import ROOT, Settings
+from app.connectors import ConnectorError
 from app.files import extract_text, save_file
 from app.runtime import Runtime
 from app.skills import MAX_BYTES
@@ -181,6 +182,7 @@ def create_app(settings=None, model=None):
             "search": settings.search_provider != "none",
             "demo": settings.demo_account,
             "max_upload_mb": settings.max_upload_mb,
+            "geoflow": runtime.geoflow.enabled,
         }
 
     @app.get("/api/threads")
@@ -441,6 +443,8 @@ def create_app(settings=None, model=None):
                     for server in servers
                 ]
             return {"ok": True, "servers": tools}
+        except ConnectorError as error:
+            raise HTTPException(502, str(error)) from None
         except Exception:
             raise HTTPException(502, "MCP 连接失败，请检查地址、依赖和环境变量") from None
 

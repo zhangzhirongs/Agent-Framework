@@ -1,3 +1,17 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "geoflow": {
+      "enabled": true,
+      "command": "python",
+      "args": [
+        "D:\\Desktop\\各项目文件\\aicode\\agent-framework\\scripts\\geoflow_mcp.py"
+      ],
+      "env": {
+        "GEOFLOW_ROOT": "${GEOFLOW_ROOT}",
+        "GEOFLOW_PHP": "${GEOFLOW_PHP}",
+        "GEOFLOW_DOCKER_CONTAINER": "${GEOFLOW_DOCKER_CONTAINER}",
+        "GEOFLOW_ARTISAN_ENV": "${GEOFLOW_ARTISAN_ENV}"
+      }
+    }
+  }
 }

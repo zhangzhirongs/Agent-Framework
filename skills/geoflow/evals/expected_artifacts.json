@@ -1,0 +1,133 @@
+{
+  "skill_id": "geoflow",
+  "required_package_files": [
+    ".gitignore",
+    "README.md",
+    "SKILL.md",
+    "agents/interface.yaml",
+    "agents/openai.yaml",
+    "manifest.json",
+    "templates/brief-template.md",
+    "evals/expected_artifacts.json",
+    "evals/failure_cases.md",
+    "evals/rubric.md",
+    "evals/semantic_config.json",
+    "evals/test_geoflow_scripts.py",
+    "evals/trigger_cases.json",
+    "examples/README.md",
+    "examples/channel-frontend-report.json",
+    "examples/qiaomu-editorial-20260418/archive.html",
+    "examples/qiaomu-editorial-20260418/article.html",
+    "examples/qiaomu-editorial-20260418/assets/app.js",
+    "examples/qiaomu-editorial-20260418/assets/theme.css",
+    "examples/qiaomu-editorial-20260418/category.html",
+    "examples/qiaomu-editorial-20260418/index.html",
+    "references/backend-connection-workflow.md",
+    "references/channel-frontend-contract.md",
+    "references/command-map.md",
+    "references/design-optimization-playbook.md",
+    "references/development-workflow.md",
+    "references/distribution-target-site-map.md",
+    "references/frontend-resource-index.md",
+    "references/geoflow-current-capability-map.md",
+    "references/geoflow-frontend-map.md",
+    "references/homepage-composition-guide.md",
+    "references/laravel-api-v1-docker.md",
+    "references/laravel-theme-contract.md",
+    "references/legacy-skill-id-migration.md",
+    "references/legacy-template-migration.md",
+    "references/operation-boundary.md",
+    "references/system-capability-discovery.md",
+    "references/template-boundary.md",
+    "references/theme-edit-workflow.md",
+    "references/theme-package-contract.md",
+    "reports/conformance_matrix.md",
+    "reports/output_quality_scorecard.md",
+    "reports/security_trust_report.md",
+    "reports/skill-ir.json",
+    "scripts/build_sync_preview_report.py",
+    "scripts/channel_endpoint_safety.py",
+    "scripts/compare_default_vs_channel_frontend.py",
+    "scripts/discover_frontend_surfaces.py",
+    "scripts/discover_geoflow_workspace.py",
+    "scripts/discover_themes.py",
+    "scripts/finalize_theme_edit_session.py",
+    "scripts/geoflow_preflight.sh",
+    "scripts/install_codex_skill.sh",
+    "scripts/prepare_theme_edit_session.py",
+    "scripts/serve_preview.py",
+    "scripts/validate_homepage_design_payload.py",
+    "security/network_policy.json",
+    "security/permission_policy.json",
+    "templates/homepage-design-template.json"
+  ],
+  "mode_outputs": {
+    "development": [
+      "changed-files",
+      "contract-impact",
+      "verification-result"
+    ],
+    "operations": [
+      "surface-used",
+      "resource-readback",
+      "final-state"
+    ],
+    "public_frontend": [
+      "target-theme-or-payload",
+      "preview-evidence",
+      "contract-check"
+    ],
+    "channel_frontend": [
+      "capability-status",
+      "sync-preview",
+      "rollback-note"
+    ],
+    "legacy_migration": [
+      "legacy-inventory",
+      "laravel-mapping",
+      "migration-handoff"
+    ]
+  },
+  "required_report_fields": [
+    "selected-mode",
+    "source-of-truth",
+    "targets-touched",
+    "verification",
+    "final-state",
+    "remaining-risks"
+  ],
+  "quality_expectations": {
+    "development": [
+      "在编辑前发现当前代码和路由契约",
+      "为变更的后端、管理端、API、CLI、队列或前端行为包含有针对性的测试"
+    ],
+    "operations": [
+      "使用受支持的 CLI、API v1 或经过身份验证的管理界面",
+      "在变更前运行预检，并回读已持久化状态"
+    ],
+    "public_frontend": [
+      "保留 Laravel 主题、路由、SEO、文章数据和线索表单契约",
+      "使用预览优先的主题暂存，并要求对实时替换进行确认"
+    ],
+    "channel_frontend": [
+      "在同步前比较默认、打包、缓存和实时目标能力",
+      "展示不受支持的模块、确认要求和回滚指引"
+    ],
+    "legacy_migration": [
+      "在映射前清点旧 PHP 入口点和数据契约",
+      "将替换备份存储在旧版 Web 根目录之外，并验证 Laravel 目标"
+    ],
+    "package": [
+      "在源、归档和已安装技能根目录中保留每个必需文件",
+      "排除缓存、本地日志、截图、凭据和临时输出"
+    ]
+  },
+  "forbidden_behaviors": [
+    "invented-routes-or-cli-commands",
+    "direct-production-sql-shortcuts",
+    "authentication-or-csrf-bypass",
+    "secret-or-personal-data-exposure",
+    "unreviewed-live-theme-or-channel-publication",
+    "unsupported-remote-module-sync"
+  ]
+}

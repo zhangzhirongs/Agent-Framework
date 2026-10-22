@@ -29,6 +29,19 @@
 
 启用后 `web_search` 才会进入工具清单。用户可以要求智能体联网查询，也可以让技能说明指导智能体使用。每次搜索最多返回有限长度的结果；服务可用性、费用和授权由接收者自行维护。
 
+## GEOFlow
+
+配置完成后，智能体 Framework 会在对话中提供只读的 GEOFlow 工具：读取目录、搜索文章和读取文章详情。Token 只在后端使用，不会发送给浏览器。
+
+```dotenv
+AGENT_GEOFLOW_BASE_URL=https://geoflow.example.com
+AGENT_GEOFLOW_API_TOKEN=
+AGENT_GEOFLOW_TIMEOUT=30
+AGENT_GEOFLOW_VERIFY_TLS=true
+```
+
+建议使用 GEOFlow API Token，并只授予 `catalog:read`、`articles:read` scope。文章创建、更新、审核和发布属于写操作，应在加入明确的用户确认和幂等键流程后再开放。
+
 ## 路径和账号
 
 - `AGENT_DATA_DIR`：数据库与 SDK 对话历史，默认 `data/`。

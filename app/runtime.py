@@ -19,6 +19,7 @@ from openai import AsyncOpenAI
 
 from app.connectors import Connectors
 from app.files import extract_text, save_file
+from app.geoflow import GeoFlowClient
 from app.skills import Skills
 
 
@@ -33,6 +34,12 @@ class Runtime:
             )
         self.skills = Skills(settings.skills_dir)
         self.connectors = Connectors(settings.mcp_config)
+        self.geoflow = GeoFlowClient(
+            settings.geoflow_base_url,
+            settings.geoflow_api_token.get_secret_value(),
+            settings.geoflow_timeout,
+            settings.geoflow_verify_tls,
+        )
         self.tasks = {}
         self.client = None
         self.model = model
@@ -77,6 +84,26 @@ class Runtime:
             return item
 
         tools = [load_skill, read_skill_resource, read_file, write_text_file]
+        if self.geoflow.enabled:
+
+            @function_tool
+            async def geoflow_catalog() -> dict:
+                """Read GEOFlow models, prompts, knowledge bases, authors and categories."""
+                return await self.geoflow.catalog()
+
+            @function_tool
+            async def geoflow_search_articles(query: str) -> dict:
+                """Search GEOFlow articles. Read-only."""
+                return await self.geoflow.list_articles(query)
+
+            @function_tool
+            async def geoflow_get_article(article_id: int) -> dict:
+                """Read one GEOFlow article by ID."""
+                return await self.geoflow.get_article(article_id)
+
+            tools.extend([geoflow_catalog, geoflow_search_articles, geoflow_get_article])
+            # Mutations require explicit confirmation in a later UI step.
+
         if self.settings.search_provider != "none":
 
             @function_tool

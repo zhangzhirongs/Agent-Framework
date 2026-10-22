@@ -2,8 +2,9 @@
 name: example-note
 description: 将用户提供的信息整理成简洁的中文工作笔记；适合会议要点、阅读摘要和行动清单。
 metadata:
-  author: Framework contributors
-  version: "1.0"
+  display_name: 工作笔记
+  author: 框架贡献者
+  version: '1.0'
 ---
 
 # 工作笔记

@@ -373,7 +373,7 @@ function SkillsPage({
                       .catch((e) => onError(e.message))
                   }
                 >
-                  {s.name}
+                  {s.display_name || s.name}
                 </button>
               </CardTitle>
             </CardHeader>
@@ -385,9 +385,9 @@ function SkillsPage({
               {admin && (
                 <IconButton
                   className="relative z-10"
-                  label={`移除 ${s.name}`}
+                  label={`移除 ${s.display_name || s.name}`}
                   onClick={async () => {
-                    if (!confirm(`移除技能 ${s.name}？`)) return;
+                    if (!confirm(`移除技能 ${s.display_name || s.name}？`)) return;
                     try {
                       await request(`/skills/${s.name}`, "DELETE");
                       await reload();
@@ -405,7 +405,7 @@ function SkillsPage({
       </div>
       {!skills.length && <p className="empty">暂无技能</p>}
       {detail && (
-        <Modal title={detail.name} onClose={() => setDetail(null)}>
+        <Modal title={detail.display_name || detail.name} onClose={() => setDetail(null)}>
           <p>{detail.description}</p>
           <small>作者：{detail.author}</small>
           <pre>{detail.content}</pre>
@@ -491,6 +491,11 @@ function MCPPage({
               onChange={(e) => setText(e.target.value)}
             />
           </label>
+          <p>
+            将服务提供方的 JSON 配置粘贴到此处，保留顶层 mcpServers 对象。
+            可在其中添加多个不同名称的服务（最多 32 个），新增时请保留已有服务，保存后点击“测试连接”。
+            支持本地 stdio、远程 HTTP 和 SSE；密钥通过环境变量引用。
+          </p>
           <div className="row">
             <Button type="submit" disabled={busy}>
               <Check size={16} />
@@ -884,7 +889,7 @@ function Workspace({
                     <div className="message-content">
                       {message.skills.map((s) => (
                         <span className="skill-mention" key={s}>
-                          @{s}{" "}
+                          @{skills.find((skill) => skill.name === s)?.display_name || s}{" "}
                         </span>
                       ))}
                       {message.content}
@@ -1014,7 +1019,7 @@ function Workspace({
                           {skills.map((s) => (
                             <Checkbox
                               key={s.name}
-                              label={s.name}
+                              label={s.display_name || s.name}
                               checked={selected.includes(s.name)}
                               disabled={
                                 !selected.includes(s.name) &&
