@@ -38,6 +38,7 @@ SSE 事件为 `delta`、`activity`、`done`。网络恢复后可从事件 ID 继
 | POST | `/api/threads/{id}/files` | multipart `file` 上传 |
 | GET | `/api/files/{id}` | 下载；`?preview=true` 内联预览 |
 | GET | `/api/files/{id}/text` | 文本提取 |
+| GET | `/api/files/{id}/preview` | DOCX / CSV 格式化预览，返回 `{ "html": "..." }` |
 | GET | `/api/skills` | 技能目录 |
 | GET | `/api/skills/{name}` | 正文与资源目录 |
 | POST | `/api/skills/import` | 管理员 multipart `files` 导入 |

@@ -1,8 +1,10 @@
+import csv
 import html
 import io
 import mimetypes
 import re
 import time
+from itertools import islice
 from pathlib import PurePosixPath
 
 from docx import Document
@@ -19,6 +21,7 @@ from app.store import new_id
 ALLOWED = {
     ".txt",
     ".md",
+    ".markdown",
     ".json",
     ".csv",
     ".html",
@@ -131,15 +134,53 @@ def extract_docx_preview(item):
                 )
                 rows.append(f"<tr>{cells}</tr>")
             rendered.append(f"<table><tbody>{''.join(rows)}</tbody></table>")
-    body_html = "".join(rendered)
+    return _preview_document("".join(rendered))
+
+
+def extract_csv_preview(item):
+    """Render CSV data as an escaped table, preserving quoted commas and newlines."""
+    text = item["content"].decode("utf-8-sig", errors="replace")
+    reader = csv.reader(io.StringIO(text, newline=""))
+    try:
+        rows = list(islice(reader, 1001))
+    except csv.Error as error:
+        raise ValueError("CSV 文件格式无效或单元格过大") from error
+    if not rows:
+        return _preview_document('<p class="notice">此文件内容为空</p>')
+    truncated = len(rows) > 1000 or any(len(row) > 200 for row in rows)
+    rendered = []
+    for index, row in enumerate(rows[:1000]):
+        tag = "th" if index == 0 else "td"
+        cells = "".join(
+            f"<{tag}>{html.escape(cell).replace(chr(10), '<br>')}</{tag}>"
+            for cell in row[:200]
+        )
+        if index == 0:
+            rendered.append(f"<thead><tr>{cells}</tr></thead><tbody>")
+        else:
+            rendered.append(f"<tr>{cells}</tr>")
+    notice = (
+        '<p class="notice">预览最多显示 1000 行、200 列，完整内容请下载文件。</p>'
+        if truncated else ""
+    )
+    return _preview_document(
+        notice + '<div class="table-wrap"><table>' + "".join(rendered) + "</tbody></table></div>"
+    )
+
+
+def _preview_document(body_html):
     return (
-        '<!doctype html><html><head><meta charset="utf-8"><style>'
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1"><style>'
+        '*{box-sizing:border-box}'
         "body{margin:0;padding:36px;background:#e9edf0;color:#253238;"
         "font:15px/1.75 Arial,sans-serif}"
-        '.page{max-width:760px;min-height:900px;margin:auto;padding:64px 72px;background:white;'
+        '.page{max-width:900px;min-height:100%;margin:auto;padding:48px;background:white;'
         'box-shadow:0 4px 24px #17252b20;overflow-wrap:anywhere}h1,h2,h3,h4,h5,h6{line-height:1.35}'
         'table{width:100%;border-collapse:collapse;margin:18px 0}td,th{border:1px solid #aebbc1;'
         'padding:7px 10px;text-align:left}th{background:#edf3f5}p{margin:0 0 12px}'
+        '.table-wrap{max-width:100%;overflow-x:auto}.table-wrap td{min-width:100px}'
+        '.notice{color:#5d6d75;font-size:13px}'
         '@media(max-width:640px){body{padding:12px}.page{padding:28px 22px;min-height:0}}'
         '</style></head><body><main class="page">'
         + body_html

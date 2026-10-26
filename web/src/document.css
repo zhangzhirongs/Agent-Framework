@@ -1,0 +1,115 @@
+.document-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.document-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+}
+.document-toolbar button[aria-pressed='true'] {
+  background: var(--soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+.document-status {
+  padding: 32px 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.document-reader {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: clamp(16px, 3vw, 36px);
+  background: var(--surface);
+}
+.document-prose {
+  box-sizing: border-box;
+  max-width: 800px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: clamp(20px, 3vw, 48px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 15px;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+.document-prose > :first-child { margin-top: 0; }
+.document-prose > :last-child { margin-bottom: 0; }
+.document-prose :where(h1, h2, h3, h4, h5, h6) {
+  margin: 1.6em 0 .65em;
+  color: var(--fg);
+  font-weight: 650;
+  line-height: 1.4;
+  text-wrap: wrap;
+}
+.document-prose h1 { font-size: 2em; }
+.document-prose h2 { font-size: 1.5em; padding-bottom: .4em; border-bottom: 1px solid var(--line); }
+.document-prose h3 { font-size: 1.25em; }
+.document-prose h4 { font-size: 1.1em; }
+.document-prose :where(h5, h6) { font-size: 1em; }
+.document-prose p { margin: 0 0 1em; }
+.document-prose :where(ul, ol) { margin: .8em 0 1.2em; padding-left: 1.7em; }
+.document-prose ul { list-style-type: disc; }
+.document-prose ol { list-style-type: decimal; }
+.document-prose ul ul { list-style-type: circle; }
+.document-prose li { padding-left: .2em; margin: .35em 0; }
+.document-prose li :where(ul, ol, p) { margin-block: .4em; }
+.document-prose .contains-task-list { list-style: none; padding-left: .3em; }
+.document-prose .task-list-item input { margin-right: .6em; accent-color: var(--primary); }
+.document-prose blockquote {
+  margin: 1.3em 0;
+  padding: 14px 20px;
+  border-left: 3px solid var(--primary);
+  border-radius: 0 6px 6px 0;
+  background: var(--surface);
+  color: var(--muted);
+}
+.document-prose blockquote > :last-child { margin-bottom: 0; }
+.document-prose a { text-decoration: underline; text-underline-offset: 3px; }
+.document-prose img { display: block; max-width: 100%; height: auto; margin: 1.5em auto; border-radius: 6px; }
+.document-prose hr { margin: 2em 0; border: 0; border-top: 1px solid var(--line); }
+.document-prose code { padding: .15em .4em; border-radius: 4px; background: var(--surface); font-size: .88em; }
+.file-preview .document-prose pre {
+  display: block;
+  margin: 1.3em 0;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  line-height: 1.7;
+  tab-size: 2;
+}
+.document-prose pre code { padding: 0; border-radius: 0; background: transparent; font-size: inherit; }
+.document-table-wrap { margin: 1.3em 0; max-width: 100%; overflow-x: auto; }
+.document-table-wrap:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.document-prose table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.65; }
+.document-prose :where(td, th) { min-width: 80px; padding: 10px 14px; border: 1px solid var(--line); text-align: left; }
+.document-prose th { background: var(--surface); font-weight: 600; }
+.document-prose tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface) 60%, var(--bg)); }
+.document-prose :where(del, s) { text-decoration: line-through; }
+.document-prose .footnotes { margin-top: 2em; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.file-preview .document-source { min-height: 0; white-space: pre; overflow-wrap: normal; tab-size: 2; }
+@media (max-width: 640px) {
+  .document-reader { padding: 12px; }
+  .document-prose { padding: 20px 16px; font-size: 14px; }
+}

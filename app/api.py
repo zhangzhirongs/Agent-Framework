@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import ROOT, Settings
 from app.connectors import ConnectorError
-from app.files import extract_docx_preview, extract_text, save_file
+from app.files import extract_csv_preview, extract_docx_preview, extract_text, save_file
 from app.runtime import Runtime
 from app.skills import MAX_BYTES
 from app.store import HASHER, Store, digest, new_id
@@ -453,9 +453,12 @@ def create_app(settings=None, model=None):
     @app.get("/api/files/{file_id}/preview")
     def file_preview(file_id: str, user=Depends(authenticated)):
         item = own_file(user["id"], file_id)
-        if not item["name"].lower().endswith(".docx"):
-            raise HTTPException(415, "此格式暂不支持富文本预览")
-        return {"html": extract_docx_preview(item)}
+        name = item["name"].lower()
+        if name.endswith(".docx"):
+            return {"html": extract_docx_preview(item)}
+        if name.endswith(".csv"):
+            return {"html": extract_csv_preview(item)}
+        raise HTTPException(415, "此格式暂不支持富文本预览")
 
     @app.get("/api/files/{file_id}")
     def download(file_id: str, preview: bool = False, user=Depends(authenticated)):

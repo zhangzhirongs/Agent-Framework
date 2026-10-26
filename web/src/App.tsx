@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -62,6 +64,11 @@ import {
 } from "./components/motion/popover-morph";
 import { PromptInput } from "./components/agents/prompt-input";
 import { cn } from "./lib/utils";
+import { documentFormat } from "./lib/document-format";
+
+const DocumentContent = lazy(() => import("./components/document-content").then((module) => ({
+  default: module.DocumentContent,
+})));
 
 function IconButton({
   label,
@@ -227,7 +234,7 @@ function fileKind(file: Pick<Attachment, "name" | "media_type">): FileKind {
   if (/(spreadsheetml|ms-excel|csv)/.test(type) || /\.(xls|xlsx|csv)$/.test(name)) return "sheet";
   if (/(presentationml|powerpoint)/.test(type) || /\.(ppt|pptx)$/.test(name)) return "slides";
   if (type.startsWith("image/")) return "image";
-  if (type.startsWith("text/") || /\.(md|json|js|ts|css|html|xml|yaml|yml)$/.test(name)) return "text";
+  if (type.startsWith("text/") || /\.(md|markdown|json|js|ts|css|html|htm|xml|yaml|yml)$/.test(name)) return "text";
   return "other";
 }
 
@@ -262,23 +269,37 @@ function Preview({
   const [text, setText] = useState(""),
     [formatted, setFormatted] = useState(""),
     [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [source, setSource] = useState(false);
+  const [loadedFile, setLoadedFile] = useState("");
   const image = file.media_type.startsWith("image/");
   const kind = fileKind(file);
-  const embedded =
-    file.media_type === "application/pdf" || file.media_type === "text/html";
+  const format = documentFormat(file.name, file.media_type);
+  const html = /\.html?$/i.test(file.name) || file.media_type === "text/html";
+  const embedded = kind === "pdf" || html;
+  const csv = /\.csv$/i.test(file.name);
   useEffect(() => {
     let cancelled = false;
     setText("");
     setFormatted("");
     setError("");
-    if (!image && !embedded && kind === "word")
+    setLoading(true);
+    setSource(false);
+    const finished = () => {
+      if (!cancelled) {
+        setLoading(false);
+        setLoadedFile(file.id);
+      }
+    };
+    if (!image && !embedded && (kind === "word" || csv))
       request<{ html: string }>(`/files/${file.id}/preview`)
         .then((r) => {
           if (!cancelled) setFormatted(r.html);
         })
         .catch((e) => {
           if (!cancelled) setError(e.message);
-        });
+        })
+        .finally(finished);
     else if (!image && !embedded)
       request<{ text: string }>(`/files/${file.id}/text`)
         .then((r) => {
@@ -286,11 +307,12 @@ function Preview({
         })
         .catch((e) => {
           if (!cancelled) setError(e.message);
-        });
+        })
+        .finally(finished);
     return () => {
       cancelled = true;
     };
-  }, [file.id, image, embedded, kind]);
+  }, [file.id, image, embedded, kind, csv]);
   const url = `/api/files/${file.id}?preview=true`;
   const tabsBar = tabs.length > 1 && (
     <div className="file-preview-tabs" role="tablist" aria-label="打开的文件">
@@ -326,7 +348,7 @@ function Preview({
         <span className="file-preview-icon" aria-hidden="true">
           <FileKindIcon kind={kind} size={19} />
         </span>
-        <span className="file-preview-type">{fileKindLabel[kind]}</span>
+        <span className="file-preview-type">{format === "markdown" ? "Markdown 文档" : fileKindLabel[kind]}</span>
         <h2 title={file.name}>{file.name}</h2>
         <a
           className="icon-button"
@@ -340,12 +362,24 @@ function Preview({
           <X size={18} />
         </IconButton>
       </header>
+      {!embedded && (format === "markdown" || format === "json") && (
+        <div className="document-toolbar" role="group" aria-label="文档显示方式">
+          <button type="button" aria-pressed={!source} onClick={() => setSource(false)}>
+            <Eye size={14} />预览
+          </button>
+          <button type="button" aria-pressed={source} onClick={() => setSource(true)}>
+            <FileCode2 size={14} />原文
+          </button>
+        </div>
+      )}
       {embedded ? (
-        file.media_type === "text/html" ? (
+        html ? (
           <iframe src={url} title={file.name} sandbox="" />
         ) : (
           <iframe src={url} title={file.name} />
         )
+      ) : loading || loadedFile !== file.id ? (
+        <p className="document-status" role="status">正在读取…</p>
       ) : error ? (
         <p className="error">
           {error}
@@ -354,7 +388,9 @@ function Preview({
       ) : formatted ? (
         <iframe className="formatted-document" srcDoc={formatted} title={file.name} sandbox="" />
       ) : (
-        <pre>{text || "正在读取…"}</pre>
+        <Suspense fallback={<p className="document-status" role="status">正在加载预览…</p>}>
+          <DocumentContent text={text} format={format} source={source} />
+        </Suspense>
       )}
     </aside>
   );
@@ -1204,7 +1240,7 @@ function Workspace({
                   multiple
                   hidden
                   ref={uploadInput}
-                  accept=".txt,.md,.json,.csv,.html,.htm,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif"
+                  accept=".txt,.md,.markdown,.json,.csv,.html,.htm,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif"
                   onChange={(e) => void upload(e.target.files)}
                 />
               </div>

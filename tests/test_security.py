@@ -118,6 +118,63 @@ async def test_docx_rich_preview_preserves_headings_runs_and_tables(platform):
     assert "<table>" in preview.json()["html"]
 
 
+async def test_csv_rich_preview_handles_quotes_newlines_and_user_isolation(platform):
+    app, _ = platform
+    app.state.store.create_user("reader", "reader-test-password")
+    async with browser(app) as client, browser(app) as other:
+        await login(client)
+        await login(other, "reader", "reader-test-password")
+        thread = (await client.post("/api/threads")).json()["id"]
+        uploaded = await client.post(
+            f"/api/threads/{thread}/files",
+            files={
+                "file": (
+                    "table.csv",
+                    '\ufeff名称,说明\r\n"A,B","第一行\n第二行"\r\n<script>,=1+1'.encode(),
+                )
+            },
+        )
+        file_id = uploaded.json()["id"]
+        response = await client.get(f"/api/files/{file_id}/preview")
+        assert response.status_code == 200
+        html = response.json()["html"]
+        assert "<thead><tr><th>名称</th><th>说明</th></tr></thead>" in html
+        assert "<td>A,B</td>" in html
+        assert "第一行<br>第二行" in html
+        assert "&lt;script&gt;" in html
+        assert "<td>=1+1</td>" in html
+        assert (await other.get(f"/api/files/{file_id}/preview")).status_code == 404
+
+
+def test_csv_preview_limits_and_empty_files():
+    from app.files import extract_csv_preview
+
+    assert "此文件内容为空" in extract_csv_preview({"content": b""})
+    rows = "\n".join(str(index) for index in range(1002))
+    html = extract_csv_preview({"content": rows.encode()})
+    assert "1000 行、200 列" in html
+    assert "<td>999</td>" in html
+    assert "<td>1000</td>" not in html
+    wide = extract_csv_preview({"content": ",".join(str(i) for i in range(201)).encode()})
+    assert "<th>199</th>" in wide
+    assert "<th>200</th>" not in wide
+
+
+async def test_markdown_extension_upload_and_preview_type_check(platform):
+    app, _ = platform
+    async with browser(app) as client:
+        await login(client)
+        thread = (await client.post("/api/threads")).json()["id"]
+        uploaded = await client.post(
+            f"/api/threads/{thread}/files",
+            files={"file": ("article.markdown", "# 标题\n\n**正文**".encode())},
+        )
+        assert uploaded.status_code == 201
+        file_id = uploaded.json()["id"]
+        assert (await client.get(f"/api/files/{file_id}/text")).json()["text"].startswith("# 标题")
+        assert (await client.get(f"/api/files/{file_id}/preview")).status_code == 415
+
+
 def test_production_forbids_demo_password_and_requires_secure_cookie():
     with pytest.raises(ValueError):
         Settings(_env_file=None, deployment_mode="production")

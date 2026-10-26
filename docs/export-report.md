@@ -41,4 +41,4 @@ uv run python scripts/package_release.py ../agent-framework-release.zip
 
 ## 已知边界
 
-服务使用单进程运行，扩展方式见运行文档。Word 采用文字预览；扫描 PDF 不含 OCR。技能内脚本可随目录保存，但不会仅因导入而执行；需要额外执行能力时接入经过审核的 MCP，并安装相应依赖。
+服务使用单进程运行，扩展方式见运行文档。Markdown 支持 GFM 格式预览；Word 预览保留标题、基本文字样式与表格，不还原全部复杂版式；扫描 PDF 不含 OCR。技能内脚本可随目录保存，但不会仅因导入而执行；需要额外执行能力时接入经过审核的 MCP，并安装相应依赖。
