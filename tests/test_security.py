@@ -79,6 +79,45 @@ async def test_html_preview_is_sandboxed_and_file_types_are_checked(platform):
         assert preview.headers["x-content-type-options"] == "nosniff"
 
 
+async def test_docx_rich_preview_preserves_headings_runs_and_tables(platform):
+    import io
+
+    from docx import Document
+
+    from tests.conftest import browser, login
+
+    app, _ = platform
+    document = Document()
+    document.add_heading("Quarterly report", level=1)
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Important").bold = True
+    table = document.add_table(rows=1, cols=2)
+    table.rows[0].cells[0].text = "Metric"
+    table.rows[0].cells[1].text = "Value"
+    output = io.BytesIO()
+    document.save(output)
+
+    async with browser(app) as client:
+        await login(client)
+        thread = await client.post("/api/threads")
+        uploaded = await client.post(
+            f"/api/threads/{thread.json()['id']}/files",
+            files={
+                "file": (
+                    "report.docx",
+                    output.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
+        preview = await client.get(f"/api/files/{uploaded.json()['id']}/preview")
+
+    assert preview.status_code == 200
+    assert "<h1" in preview.json()["html"]
+    assert "<strong>Important</strong>" in preview.json()["html"]
+    assert "<table>" in preview.json()["html"]
+
+
 def test_production_forbids_demo_password_and_requires_secure_cookie():
     with pytest.raises(ValueError):
         Settings(_env_file=None, deployment_mode="production")

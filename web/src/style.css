@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -21,7 +21,7 @@
 }
 
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --bg: #ffffff;
   --fg: #232c28;
   --surface: #f5f7f6;
@@ -92,10 +92,7 @@ a {
   color: var(--primary);
 }
 pre {
-  font:
-    13px/1.75 ui-monospace,
-    SFMono-Regular,
-    monospace;
+  font: 13px/1.75 ui-monospace, SFMono-Regular, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -145,7 +142,7 @@ pre {
   z-index: -2;
 }
 .login-page::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   background: rgb(0 0 0 / 22%);
@@ -469,6 +466,10 @@ pre {
   object-fit: cover;
 }
 .attachment-file {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
@@ -476,12 +477,79 @@ pre {
   border-radius: 8px;
   background: var(--surface);
   padding: 8px 10px;
+  border: 1px solid transparent;
+  border-left-width: 3px;
+  text-align: left;
+}
+.attachment-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 62%);
 }
 .attachment-file span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+.attachment-file small {
+  color: currentColor;
+  opacity: 0.72;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.attachment-pdf {
+  color: #bd3c4b;
+  background: #fff1f2;
+  border-color: #f3c4ca;
+}
+.attachment-word {
+  color: #2463a6;
+  background: #edf5ff;
+  border-color: #b9d4f2;
+}
+.attachment-sheet {
+  color: #28774e;
+  background: #edf9f1;
+  border-color: #b8dfc6;
+}
+.attachment-slides {
+  color: #b45c1c;
+  background: #fff5e9;
+  border-color: #f1d0a9;
+}
+.attachment-text {
+  color: #57626b;
+  background: #f1f4f5;
+  border-color: #cbd3d8;
+}
+.attachment-other {
+  color: var(--primary);
+  background: var(--soft);
+  border-color: var(--primary);
+}
+.dark .attachment-pdf {
+  background: #42252a;
+  border-color: #773d46;
+}
+.dark .attachment-word {
+  background: #20364e;
+  border-color: #365d84;
+}
+.dark .attachment-sheet {
+  background: #1d3b2a;
+  border-color: #376d4d;
+}
+.dark .attachment-slides {
+  background: #47321f;
+  border-color: #80552f;
+}
+.dark .attachment-text {
+  background: #2b3235;
+  border-color: #4c5b63;
 }
 .run-status {
   font-size: 12px;
@@ -610,7 +678,7 @@ pre {
   min-width: 0;
   gap: 18px;
 }
-.skill-card [data-slot="card-header"] {
+.skill-card [data-slot='card-header'] {
   gap: 16px;
 }
 .resource-icon {
@@ -634,7 +702,7 @@ pre {
   line-height: 1.8;
   color: var(--muted);
 }
-.skill-card [data-slot="card-footer"] {
+.skill-card [data-slot='card-footer'] {
   justify-content: space-between;
   margin-top: auto;
   gap: 8px;
@@ -704,10 +772,7 @@ pre {
   color: var(--fg);
   background: var(--surface);
   resize: vertical;
-  font:
-    13px/1.8 ui-monospace,
-    SFMono-Regular,
-    monospace;
+  font: 13px/1.8 ui-monospace, SFMono-Regular, monospace;
   outline: none;
 }
 .config-editor:focus-visible {
@@ -717,20 +782,140 @@ pre {
 .file-preview {
   display: flex;
   flex-direction: column;
+  position: relative;
   border-left: 1px solid var(--line);
   background: var(--bg);
-  flex: 0 0 42%;
+  flex: 0 1 42%;
   min-width: 300px;
-  max-width: 650px;
+  max-width: 850px;
+  width: 42%;
+  overflow: hidden;
+  direction: ltr;
+}
+.file-preview-resize {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 4;
+  touch-action: none;
+}
+.file-preview-resize:hover,
+.file-preview-resize:active {
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
+}
+.file-preview-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 42px;
+  padding: 5px 8px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.file-preview-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 190px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  color: var(--muted);
+}
+.file-preview-tab.active {
+  color: var(--fg);
+  border-color: var(--line);
+  background: var(--bg);
+}
+.file-preview-tab button:not(.icon-button) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 5px 8px 9px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.file-preview-tab button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-preview-tab .icon-button {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
 }
 .file-preview header {
   height: 56px;
   flex: 0 0 56px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   padding: 0 14px;
   border-bottom: 1px solid var(--line);
+}
+.file-preview-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 8px;
+}
+.file-preview-type {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.file-preview-pdf .file-preview-icon {
+  color: #bd3c4b;
+  background: #fff1f2;
+}
+.file-preview-word .file-preview-icon {
+  color: #2463a6;
+  background: #edf5ff;
+}
+.file-preview-sheet .file-preview-icon {
+  color: #28774e;
+  background: #edf9f1;
+}
+.file-preview-slides .file-preview-icon {
+  color: #b45c1c;
+  background: #fff5e9;
+}
+.file-preview-text .file-preview-icon {
+  color: #57626b;
+  background: #f1f4f5;
+}
+.file-preview-other .file-preview-icon {
+  color: var(--primary);
+  background: var(--soft);
+}
+.dark .file-preview-pdf .file-preview-icon {
+  background: #42252a;
+}
+.dark .file-preview-word .file-preview-icon {
+  background: #20364e;
+}
+.dark .file-preview-sheet .file-preview-icon {
+  background: #1d3b2a;
+}
+.dark .file-preview-slides .file-preview-icon {
+  background: #47321f;
+}
+.dark .file-preview-text .file-preview-icon {
+  background: #2b3235;
 }
 .file-preview header h2 {
   font-size: 13px;
@@ -747,12 +932,60 @@ pre {
   place-items: center;
   color: var(--muted);
 }
+.file-preview-type,
+.library-mention,
+.title-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  padding: 4px 7px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  font-size: 11px;
+}
+.library-mention {
+  color: #147d73;
+  background: #e5f5f1;
+}
+.title-mention {
+  color: #a45c13;
+  background: #fff1dc;
+}
+.dark .library-mention {
+  color: #8bd6c8;
+  background: #173b37;
+}
+.dark .title-mention {
+  color: #f2bf7e;
+  background: #47351f;
+}
+.library-options {
+  max-height: 240px;
+  overflow: auto;
+}
+.library-options strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 7px 4px 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
 .file-preview iframe {
   flex: 1;
   width: 100%;
   border: 0;
   min-height: 0;
   background: #fff;
+}
+.file-preview .formatted-document {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #e9edf0;
 }
 .file-preview pre {
   margin: 0;
@@ -975,6 +1208,7 @@ dialog pre {
     min-width: 0;
     width: 100%;
     max-width: none;
+    resize: none;
   }
   .settings-page {
     padding: 20px 16px;

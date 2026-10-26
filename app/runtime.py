@@ -139,8 +139,10 @@ class Runtime:
                 return {"error": "联网服务请求失败，请检查配置或额度"}
             return {"results": json.dumps(response.json(), ensure_ascii=False)[:24000]}
 
-    def start(self, run, prompt, files, skill_names):
-        task = asyncio.create_task(self.execute(run, prompt, files, skill_names))
+    def start(self, run, prompt, files, skill_names, geoflow_context=None):
+        task = asyncio.create_task(
+            self.execute(run, prompt, files, skill_names, geoflow_context)
+        )
         self.tasks[run["id"]] = task
 
         def finished(completed):
@@ -157,7 +159,7 @@ class Runtime:
 
         task.add_done_callback(finished)
 
-    async def execute(self, run, prompt, files, skill_names):
+    async def execute(self, run, prompt, files, skill_names, geoflow_context=None):
         run_id, thread_id = run["id"], run["thread_id"]
         generated = []
         output, status, error = "", "completed", ""
@@ -179,6 +181,7 @@ class Runtime:
                 {
                     "type": "input_text",
                     "text": prompt
+                    + self._geoflow_context_prompt(geoflow_context)
                     + ("\n本轮附件：" + json.dumps(manifest, ensure_ascii=False) if files else ""),
                 }
             ]
@@ -248,6 +251,34 @@ class Runtime:
                     (status, output, error, time.time(), run_id),
                 )
             self.store.event(run_id, "done", {"status": status, "error": error})
+
+    @staticmethod
+    def _geoflow_context_prompt(context):
+        if not isinstance(context, dict):
+            return ""
+        selected = []
+        for key, label in (
+            ("title_libraries", "标题库"),
+            ("knowledge_bases", "知识库"),
+        ):
+            values = context.get(key, [])
+            if not isinstance(values, list):
+                continue
+            names = [
+                str(item["name"])
+                for item in values
+                if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]
+            ]
+            if names:
+                selected.append(f"{label}：" + "、".join(names))
+        if not selected:
+            return ""
+        return (
+            "\n\n用户选择的 GEOFlow 素材："
+            + "；".join(selected)
+            + "。撰写文章时，标题库用于提供主题和标题候选；知识库作为事实依据，"
+            "请通过当前可用的 MCP 工具检索其内容，不要仅凭库名编造事实。"
+        )
 
     async def close(self):
         tasks = list(self.tasks.values())

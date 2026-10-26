@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import ROOT, Settings
 from app.connectors import ConnectorError
-from app.files import extract_text, save_file
+from app.files import extract_docx_preview, extract_text, save_file
 from app.runtime import Runtime
 from app.skills import MAX_BYTES
 from app.store import HASHER, Store, digest, new_id
@@ -31,11 +31,20 @@ class PasswordInput(BaseModel):
     new_password: str = Field(min_length=8, max_length=500)
 
 
+class GeoFlowContext(BaseModel):
+    """Selected library IDs sent with a chat message after loading /api/geoflow/catalog."""
+
+    model_config = ConfigDict(extra="forbid")
+    knowledge_base_ids: list[int] = Field(default_factory=list, max_length=5)
+    title_library_ids: list[int] = Field(default_factory=list, max_length=3)
+
+
 class MessageInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     content: str = Field(default="", max_length=32000)
     file_ids: list[str] = Field(default_factory=list, max_length=8)
     skills: list[str] = Field(default_factory=list, max_length=4)
+    geoflow_context: GeoFlowContext | None = None
 
 
 class MCPInput(BaseModel):
@@ -185,6 +194,43 @@ def create_app(settings=None, model=None):
             "geoflow": runtime.geoflow.enabled,
         }
 
+    @app.get("/api/geoflow/catalog")
+    async def geoflow_catalog(user=Depends(authenticated)):
+        """Return selectable GEOFlow libraries for the article composer."""
+        if not runtime.geoflow.enabled:
+            raise HTTPException(503, "GEOFlow 未配置，请先配置地址和 API Token")
+        try:
+            catalog = await runtime.geoflow.catalog()
+        except Exception:
+            raise HTTPException(502, "GEOFlow 目录读取失败，请检查连接和权限") from None
+        if not isinstance(catalog, dict):
+            raise HTTPException(502, "GEOFlow 返回的目录格式无效")
+        # Keep the upstream catalog intact, while making the two composer selectors
+        # predictable even when an older GEOFlow deployment omits an empty collection.
+        return {
+            **catalog,
+            "title_libraries": catalog.get("title_libraries", []),
+            "knowledge_bases": catalog.get("knowledge_bases", []),
+        }
+
+    @app.get("/api/geoflow/materials/{material_type}")
+    async def geoflow_materials(
+        material_type: str,
+        search: str = "",
+        page: int = 1,
+        per_page: int = 50,
+        user=Depends(authenticated),
+    ):
+        """Search/paginate title or knowledge libraries for large catalogs."""
+        if not runtime.geoflow.enabled:
+            raise HTTPException(503, "GEOFlow 未配置，请先配置地址和 API Token")
+        try:
+            return await runtime.geoflow.material_libraries(material_type, search, page, per_page)
+        except ValueError:
+            raise HTTPException(422, "素材库类型仅支持 knowledge 或 title") from None
+        except Exception:
+            raise HTTPException(502, "GEOFlow 素材库读取失败，请检查连接和权限") from None
+
     @app.get("/api/threads")
     def threads(user=Depends(authenticated)):
         return store.query(
@@ -260,6 +306,49 @@ def create_app(settings=None, model=None):
         if any(f["media_type"].startswith("image/") for f in files) and not settings.vision_enabled:
             raise HTTPException(422, "当前模型未启用视觉，请配置 AGENT_VISION_ENABLED 后再发送图片")
         prompt = body.content.strip() or "请分析这些附件"
+        geoflow_context = None
+        if body.geoflow_context and (
+            body.geoflow_context.knowledge_base_ids or body.geoflow_context.title_library_ids
+        ):
+            if not runtime.geoflow.enabled:
+                raise HTTPException(503, "已选择 GEOFlow 素材，但 GEOFlow 尚未配置")
+            try:
+                catalog = await runtime.geoflow.catalog()
+            except Exception:
+                raise HTTPException(502, "GEOFlow 目录读取失败，无法校验所选素材") from None
+
+            def selected_names(key, ids):
+                values = catalog.get(key, []) if isinstance(catalog, dict) else []
+                rows = values if isinstance(values, list) else []
+                by_id = {str(item.get("id")): item for item in rows if isinstance(item, dict)}
+                missing = [item_id for item_id in ids if str(item_id) not in by_id]
+                if missing:
+                    raise HTTPException(422, f"所选 GEOFlow 素材不可用: {missing}")
+                return [
+                    str(
+                        by_id[str(item_id)].get("name")
+                        or by_id[str(item_id)].get("title")
+                        or item_id
+                    )
+                    for item_id in ids
+                ]
+
+            knowledge_names = selected_names(
+                "knowledge_bases", body.geoflow_context.knowledge_base_ids
+            )
+            title_names = selected_names("title_libraries", body.geoflow_context.title_library_ids)
+            geoflow_context = {
+                "knowledge_bases": [
+                    {"id": item_id, "name": name}
+                    for item_id, name in zip(
+                        body.geoflow_context.knowledge_base_ids, knowledge_names
+                    )
+                ],
+                "title_libraries": [
+                    {"id": item_id, "name": name}
+                    for item_id, name in zip(body.geoflow_context.title_library_ids, title_names)
+                ],
+            }
         run = {"id": new_id(), "thread_id": thread_id, "status": "queued", "created": time.time()}
         try:
             with store.connect() as db:
@@ -276,7 +365,7 @@ def create_app(settings=None, model=None):
                 )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "此对话已有任务正在执行") from None
-        runtime.start(run, prompt, files, body.skills)
+        runtime.start(run, prompt, files, body.skills, geoflow_context)
         return run
 
     def own_run(user_id, run_id):
@@ -360,6 +449,13 @@ def create_app(settings=None, model=None):
     @app.get("/api/files/{file_id}/text")
     def file_text(file_id: str, user=Depends(authenticated)):
         return {"text": extract_text(own_file(user["id"], file_id))}
+
+    @app.get("/api/files/{file_id}/preview")
+    def file_preview(file_id: str, user=Depends(authenticated)):
+        item = own_file(user["id"], file_id)
+        if not item["name"].lower().endswith(".docx"):
+            raise HTTPException(415, "此格式暂不支持富文本预览")
+        return {"html": extract_docx_preview(item)}
 
     @app.get("/api/files/{file_id}")
     def download(file_id: str, preview: bool = False, user=Depends(authenticated)):

@@ -3,6 +3,8 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import {
@@ -13,7 +15,10 @@ import {
   Download,
   Eye,
   EyeOff,
+  FileCode2,
+  FileSpreadsheet,
   FileText,
+  Library,
   KeyRound,
   LogOut,
   MessageSquare,
@@ -212,17 +217,69 @@ function Login({ accept }: { accept: (p: Profile) => void }) {
   );
 }
 
-function Preview({ file, onClose }: { file: Attachment; onClose: () => void }) {
+type FileKind = "pdf" | "word" | "sheet" | "slides" | "image" | "text" | "other";
+
+function fileKind(file: Pick<Attachment, "name" | "media_type">): FileKind {
+  const name = file.name.toLowerCase();
+  const type = file.media_type.toLowerCase();
+  if (type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
+  if (/(wordprocessingml|msword)/.test(type) || /\.(doc|docx|rtf)$/.test(name)) return "word";
+  if (/(spreadsheetml|ms-excel|csv)/.test(type) || /\.(xls|xlsx|csv)$/.test(name)) return "sheet";
+  if (/(presentationml|powerpoint)/.test(type) || /\.(ppt|pptx)$/.test(name)) return "slides";
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("text/") || /\.(md|json|js|ts|css|html|xml|yaml|yml)$/.test(name)) return "text";
+  return "other";
+}
+
+const fileKindLabel: Record<FileKind, string> = {
+  pdf: "PDF 文档", word: "Word 文档", sheet: "Excel 表格", slides: "演示文稿",
+  image: "图片", text: "文本文件", other: "文件",
+};
+
+function FileKindIcon({ kind, size = 18 }: { kind: FileKind; size?: number }) {
+  if (kind === "sheet") return <FileSpreadsheet size={size} />;
+  if (kind === "text") return <FileCode2 size={size} />;
+  return <FileText size={size} />;
+}
+
+function Preview({
+  file,
+  onClose,
+  tabs = [],
+  onSelect,
+  onCloseTab,
+  onResizeStart,
+  style,
+}: {
+  file: Attachment;
+  onClose: () => void;
+  tabs?: Attachment[];
+  onSelect?: (file: Attachment) => void;
+  onCloseTab?: (file: Attachment) => void;
+  onResizeStart?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  style?: CSSProperties;
+}) {
   const [text, setText] = useState(""),
+    [formatted, setFormatted] = useState(""),
     [error, setError] = useState("");
   const image = file.media_type.startsWith("image/");
+  const kind = fileKind(file);
   const embedded =
     file.media_type === "application/pdf" || file.media_type === "text/html";
   useEffect(() => {
     let cancelled = false;
     setText("");
+    setFormatted("");
     setError("");
-    if (!image && !embedded)
+    if (!image && !embedded && kind === "word")
+      request<{ html: string }>(`/files/${file.id}/preview`)
+        .then((r) => {
+          if (!cancelled) setFormatted(r.html);
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e.message);
+        });
+    else if (!image && !embedded)
       request<{ text: string }>(`/files/${file.id}/text`)
         .then((r) => {
           if (!cancelled) setText(r.text);
@@ -233,11 +290,27 @@ function Preview({ file, onClose }: { file: Attachment; onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [file.id, image, embedded]);
+  }, [file.id, image, embedded, kind]);
   const url = `/api/files/${file.id}?preview=true`;
+  const tabsBar = tabs.length > 1 && (
+    <div className="file-preview-tabs" role="tablist" aria-label="打开的文件">
+      {tabs.map((tab) => (
+        <div className={cn("file-preview-tab", tab.id === file.id && "active")} key={tab.id}>
+          <button type="button" role="tab" aria-selected={tab.id === file.id} title={tab.name} onClick={() => onSelect?.(tab)}>
+            <FileKindIcon kind={fileKind(tab)} size={14} />
+            <span>{tab.name}</span>
+          </button>
+          <IconButton label={`关闭 ${tab.name}`} onClick={() => onCloseTab?.(tab)}>
+            <X size={12} />
+          </IconButton>
+        </div>
+      ))}
+    </div>
+  );
   if (image)
     return (
       <Modal title={file.name} onClose={onClose}>
+        {tabsBar}
         <img className="image-preview" src={url} alt={file.name} />
         <a className="download" href={`/api/files/${file.id}`} download>
           <Download size={16} />
@@ -246,8 +319,14 @@ function Preview({ file, onClose }: { file: Attachment; onClose: () => void }) {
       </Modal>
     );
   return (
-    <aside className="file-preview">
+    <aside className={cn("file-preview", `file-preview-${kind}`)} style={style}>
+      <div className="file-preview-resize" role="separator" aria-label="调整预览宽度" onPointerDown={onResizeStart} />
+      {tabsBar}
       <header>
+        <span className="file-preview-icon" aria-hidden="true">
+          <FileKindIcon kind={kind} size={19} />
+        </span>
+        <span className="file-preview-type">{fileKindLabel[kind]}</span>
         <h2 title={file.name}>{file.name}</h2>
         <a
           className="icon-button"
@@ -272,6 +351,8 @@ function Preview({ file, onClose }: { file: Attachment; onClose: () => void }) {
           {error}
           <a href={`/api/files/${file.id}`}>下载文件</a>
         </p>
+      ) : formatted ? (
+        <iframe className="formatted-document" srcDoc={formatted} title={file.name} sandbox="" />
       ) : (
         <pre>{text || "正在读取…"}</pre>
       )}
@@ -549,6 +630,12 @@ function Workspace({
   const [skills, setSkills] = useState<Skill[]>([]),
     [selected, setSelected] = useState<string[]>([]),
     [toolsOpen, setToolsOpen] = useState(false);
+  const [geoflowCatalog, setGeoflowCatalog] = useState<{
+    knowledge_bases: { id: number | string; name?: string; title?: string }[];
+    title_libraries: { id: number | string; name?: string; title?: string }[];
+  } | null>(null);
+  const [selectedKnowledge, setSelectedKnowledge] = useState<string[]>([]),
+    [selectedTitles, setSelectedTitles] = useState<string[]>([]);
   const [active, setActive] = useState<Run | null>(null),
     [live, setLive] = useState(""),
     [activity, setActivity] = useState(""),
@@ -556,7 +643,9 @@ function Workspace({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [preview, setPreview] = useState<Attachment | null>(null),
+    [previewTabs, setPreviewTabs] = useState<Attachment[]>([]),
     [passwordOpen, setPasswordOpen] = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(42);
   const [dark, setDark] = useState(
     () => localStorage.getItem("agent-theme") === "dark",
   );
@@ -637,12 +726,18 @@ function Workspace({
       .catch((e) => setError(e.message));
   }, [view]);
   useEffect(() => {
+    request<typeof geoflowCatalog>("/geoflow/catalog")
+      .then(setGeoflowCatalog)
+      .catch(() => setGeoflowCatalog(null));
+  }, []);
+  useEffect(() => {
     selection.current = current;
     source.current?.close();
     setDetail(null);
     setActive(null);
     setLive("");
     setPreview(null);
+    setPreviewTabs([]);
     if (current) void load(current).catch((e) => setError(e.message));
     return () => source.current?.close();
   }, [current, load]);
@@ -681,10 +776,16 @@ function Workspace({
         content: prompt,
         file_ids: pending.map((f) => f.id),
         skills: selected,
+        geoflow_context: {
+          knowledge_base_ids: selectedKnowledge.map(Number),
+          title_library_ids: selectedTitles.map(Number),
+        },
       });
       setPrompt("");
       setPending([]);
       setSelected([]);
+      setSelectedKnowledge([]);
+      setSelectedTitles([]);
       setToolsOpen(false);
       await load(id);
       await reloadThreads();
@@ -729,29 +830,56 @@ function Workspace({
     setCurrent(id);
     setError("");
   };
-  const fileButton = (file: Attachment) => (
-    <Button
+  const fileButton = (file: Attachment) => {
+    const kind = fileKind(file);
+    return <Button
       variant="ghost"
       type="button"
       key={file.id}
       className={
         file.media_type.startsWith("image/")
           ? "attachment-image"
-          : "attachment-file"
+          : cn("attachment-file", `attachment-${kind}`)
       }
       title={file.name}
-      onClick={() => setPreview(file)}
+      onClick={() => {
+        setPreview(file);
+        setPreviewTabs((tabs) => tabs.some((tab) => tab.id === file.id) ? tabs : [...tabs, file]);
+      }}
     >
       {file.media_type.startsWith("image/") ? (
         <img src={`/api/files/${file.id}?preview=true`} alt={file.name} />
       ) : (
         <>
-          <FileText size={16} />
+          <span className="attachment-icon" aria-hidden="true">
+            <FileKindIcon kind={kind} size={17} />
+          </span>
           <span>{file.name}</span>
+          <small>{fileKindLabel[kind]}</small>
         </>
       )}
-    </Button>
-  );
+    </Button>;
+  };
+  const beginPreviewResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (window.matchMedia("(max-width: 700px)").matches) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const parent = event.currentTarget.parentElement?.parentElement;
+    const panel = event.currentTarget.parentElement;
+    if (!parent || !panel) return;
+    const startWidth = panel.getBoundingClientRect().width;
+    const move = (moveEvent: PointerEvent) => {
+      const available = parent.getBoundingClientRect().width;
+      const next = Math.min(650, Math.max(300, startWidth + startX - moveEvent.clientX));
+      setPreviewWidth(Math.min(80, Math.max(25, (next / available) * 100)));
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end, { once: true });
+  };
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -981,6 +1109,18 @@ function Workspace({
                           ))}
                         </div>
                       )}
+                      {(selectedKnowledge.length > 0 || selectedTitles.length > 0) && (
+                        <div className="selected-skills">
+                          {selectedKnowledge.map((id) => {
+                            const item = geoflowCatalog?.knowledge_bases.find((x) => String(x.id) === id);
+                            return <span className="library-mention" key={`k-${id}`}>知识库 · {item?.name || item?.title || id}</span>;
+                          })}
+                          {selectedTitles.map((id) => {
+                            const item = geoflowCatalog?.title_libraries.find((x) => String(x.id) === id);
+                            return <span className="title-mention" key={`t-${id}`}>标题库 · {item?.name || item?.title || id}</span>;
+                          })}
+                        </div>
+                      )}
                     </>
                   }
                   leadingAction={
@@ -1014,6 +1154,25 @@ function Workspace({
                           <Paperclip size={16} />
                           上传附件
                         </Button>
+                        {geoflowCatalog && (
+                          <>
+                            <hr />
+                            <div className="skills-options library-options">
+                              <strong><Library size={14} /> GEOFlow 知识库</strong>
+                              {geoflowCatalog.knowledge_bases.map((item) => {
+                                const id = String(item.id);
+                                return <Checkbox key={id} label={item.name || item.title || `知识库 ${id}`} checked={selectedKnowledge.includes(id)} onCheckedChange={(checked) => setSelectedKnowledge((v) => checked ? [...v, id] : v.filter((x) => x !== id))} />;
+                              })}
+                              {!geoflowCatalog.knowledge_bases.length && <span>暂无知识库</span>}
+                              <strong><FileText size={14} /> GEOFlow 标题库</strong>
+                              {geoflowCatalog.title_libraries.map((item) => {
+                                const id = String(item.id);
+                                return <Checkbox key={id} label={item.name || item.title || `标题库 ${id}`} checked={selectedTitles.includes(id)} onCheckedChange={(checked) => setSelectedTitles((v) => checked ? [...v, id] : v.filter((x) => x !== id))} />;
+                              })}
+                              {!geoflowCatalog.title_libraries.length && <span>暂无标题库</span>}
+                            </div>
+                          </>
+                        )}
                         <hr />
                         <div className="skills-options">
                           {skills.map((s) => (
@@ -1051,7 +1210,22 @@ function Workspace({
               </div>
             </section>
             {preview && (
-              <Preview file={preview} onClose={() => setPreview(null)} />
+              <Preview
+                file={preview}
+                tabs={previewTabs}
+                onSelect={setPreview}
+                onClose={() => {
+                  setPreview(null);
+                  setPreviewTabs([]);
+                }}
+                onCloseTab={(tab) => {
+                  const next = previewTabs.filter((item) => item.id !== tab.id);
+                  setPreviewTabs(next);
+                  if (tab.id === preview.id) setPreview(next.at(-1) || null);
+                }}
+                onResizeStart={beginPreviewResize}
+                style={{ flexBasis: `${previewWidth}%`, width: `${previewWidth}%` }}
+              />
             )}
           </div>
         )}
