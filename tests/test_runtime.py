@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.geoflow import GeoFlowClient
 from tests.conftest import browser, login, run_message
 
 
@@ -130,3 +131,21 @@ async def test_search_uses_selected_provider_and_own_credentials(platform, monke
         assert seen[0].headers["X-Subscription-Token"] == "test-search-only"
     else:
         assert seen[0].url.params["format"] == "json"
+
+
+async def test_runtime_registers_geoflow_social_tools(platform):
+    app, _ = platform
+    app.state.runtime.geoflow = GeoFlowClient("https://geo.example.test", "token")
+
+    names = {tool.name for tool in app.state.runtime.tools("thread", [])}
+
+    assert {
+        "geoflow_catalog",
+        "geoflow_search_articles",
+        "geoflow_get_article",
+        "geoflow_save_article_draft",
+        "geoflow_list_social_platforms",
+        "geoflow_list_social_accounts",
+        "geoflow_enqueue_social_publication",
+        "geoflow_get_social_job",
+    } <= names

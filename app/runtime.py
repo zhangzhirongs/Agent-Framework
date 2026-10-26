@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import time
+import uuid
 
 import httpx
 from agents import (
@@ -101,8 +102,56 @@ class Runtime:
                 """Read one GEOFlow article by ID."""
                 return await self.geoflow.get_article(article_id)
 
-            tools.extend([geoflow_catalog, geoflow_search_articles, geoflow_get_article])
-            # Mutations require explicit confirmation in a later UI step.
+            @function_tool
+            async def geoflow_save_article_draft(
+                title: str, content: str, excerpt: str = ""
+            ) -> dict:
+                """Save generated content as a draft that still requires GEOFlow review."""
+                payload = {"title": title, "content": content}
+                if excerpt:
+                    payload["excerpt"] = excerpt
+                article = await self.geoflow.save_article_draft(payload, uuid.uuid4().hex)
+                article_id = int(article["id"])
+                return {"saved": article, "verified": await self.geoflow.get_article(article_id)}
+
+            @function_tool
+            async def geoflow_list_social_platforms() -> dict:
+                """List social publishing platforms supported by GEOFlow."""
+                return await self.geoflow.social_platforms()
+
+            @function_tool
+            async def geoflow_list_social_accounts(platform: str = "") -> dict:
+                """List active social accounts for a platform, without credentials."""
+                return await self.geoflow.social_accounts(platform.strip() or None)
+
+            @function_tool
+            async def geoflow_enqueue_social_publication(
+                account_id: int,
+                title: str,
+                content: str,
+                excerpt: str = "",
+                images: list[str] | None = None,
+            ) -> dict:
+                """Queue work for the user-selected account. This does not confirm publication."""
+                return await self.geoflow.enqueue_social_publication(
+                    account_id, title, content, uuid.uuid4().hex, excerpt, images
+                )
+
+            @function_tool
+            async def geoflow_get_social_job(job_id: int) -> dict:
+                """Read status for a social executor job."""
+                return await self.geoflow.get_social_job(job_id)
+
+            tools.extend([
+                geoflow_catalog,
+                geoflow_search_articles,
+                geoflow_get_article,
+                geoflow_save_article_draft,
+                geoflow_list_social_platforms,
+                geoflow_list_social_accounts,
+                geoflow_enqueue_social_publication,
+                geoflow_get_social_job,
+            ])
 
         if self.settings.search_provider != "none":
 

@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -108,6 +110,59 @@ async def test_geoflow_material_libraries_rejects_arbitrary_type():
     client = GeoFlowClient("https://geo.example.test", "token")
     with pytest.raises(ValueError):
         await client.material_libraries("../../articles")
+
+
+async def test_social_publish_calls_use_selected_account_and_idempotency(monkeypatch):
+    seen = []
+
+    def handle(request):
+        seen.append(request)
+        if request.url.path.endswith("/social-publication/jobs"):
+            return httpx.Response(
+                202, json={"success": True, "data": {"job_id": 12, "job_state": "queued"}}
+            )
+        return httpx.Response(200, json={"success": True, "data": {"items": []}})
+
+    factory = httpx.AsyncClient
+    monkeypatch.setattr(
+        "app.geoflow.httpx.AsyncClient",
+        lambda **kwargs: factory(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    client = GeoFlowClient("https://geo.example.test", "token")
+
+    await client.social_platforms()
+    await client.social_accounts("xiaohongshu")
+    queued = await client.enqueue_social_publication(
+        8, "系统介绍", "介绍正文", "job-key-1", images=["https://assets.example.test/cover.jpg"]
+    )
+    await client.get_social_job(12)
+
+    assert queued["job_state"] == "queued"
+    assert seen[0].url.path == "/api/v1/social-publication/platforms"
+    assert dict(seen[1].url.params) == {"platform": "xiaohongshu"}
+    assert json.loads(seen[2].content)["account_id"] == 8
+    assert seen[2].headers["x-idempotency-key"] == "job-key-1"
+    assert seen[3].url.path == "/api/v1/social-publication/jobs/12"
+
+
+async def test_save_article_draft_cannot_publish(monkeypatch):
+    seen = []
+    factory = httpx.AsyncClient
+
+    def handle(request):
+        seen.append(request)
+        return httpx.Response(201, json={"success": True, "data": {"id": 21}})
+
+    monkeypatch.setattr(
+        "app.geoflow.httpx.AsyncClient",
+        lambda **kwargs: factory(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    await GeoFlowClient("https://geo.example.test", "token").save_article_draft(
+        {"title": "系统介绍", "content": "正文", "status": "published"}, "draft-key"
+    )
+    payload = json.loads(seen[0].content)
+    assert payload["status"] == "draft"
+    assert payload["review_status"] == "pending"
 
 
 async def test_geoflow_catalog_api_requires_login_and_returns_selectable_libraries(platform):

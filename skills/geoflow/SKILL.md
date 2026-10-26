@@ -15,6 +15,10 @@ GEOFlow 是一个基于 Laravel 的 GEO 内容工程和多站点分发平台。�
 
 MCP 结果应返回结构化响应对象，其中包含 `success`、`operation`、`resource`、最终 `state`、`verification`，以及脱敏后的 `warnings` 或 `error` 数据。将本地持久化成功、排队任务成功和远程渠道成功区分开；不要将其中一项报告为其他项的证明。
 
+### 文章生成和社媒发布
+
+用户提出写作需求时，以一问一答方式逐项确认用途、知识库、标题库、图片和目标平台；每次展示当前选项后再问下一项。用户选定社媒平台后调用 `geoflow_list_social_accounts` 展示该平台账号，并要求用户明确选定账号，不得代选。生成后用 `geoflow_save_article_draft` 保存为 `draft/pending` 并回读确认。发布任务必须传入所选 `account_id`，通过 `geoflow_enqueue_social_publication` 加入执行节点 job；`queued` 只表示任务入队，不能说成平台发布成功。使用 `geoflow_get_social_job` 按 job ID 查询最终执行状态。
+
 ## 路由
 
 1. 进行源码工作时运行 `scripts/discover_geoflow_workspace.py <workspace>`，或在运行时变更前运行 `scripts/geoflow_preflight.sh "<workspace>" [config] [checks]`。可用时检查当前 CLI 帮助和路由。

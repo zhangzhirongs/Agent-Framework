@@ -121,3 +121,45 @@ class GeoFlowClient:
             json=payload,
             headers={"X-Idempotency-Key": idempotency_key},
         )
+
+    async def save_article_draft(
+        self, payload: dict[str, Any], idempotency_key: str
+    ) -> dict[str, Any]:
+        draft = {**payload, "status": "draft", "review_status": "pending"}
+        return await self.create_article(draft, idempotency_key)
+
+    async def social_platforms(self) -> dict[str, Any]:
+        return await self.request("GET", "social-publication/platforms")
+
+    async def social_accounts(self, platform: str | None = None) -> dict[str, Any]:
+        params = {"platform": platform} if platform else None
+        return await self.request("GET", "social-publication/accounts", params=params)
+
+    async def enqueue_social_publication(
+        self,
+        account_id: int,
+        title: str,
+        content: str,
+        idempotency_key: str,
+        excerpt: str = "",
+        images: list[str] | None = None,
+    ) -> dict[str, Any]:
+        if account_id < 1 or not title.strip() or not content.strip():
+            raise ValueError("A valid account, title, and content are required")
+        return await self.request(
+            "POST",
+            "social-publication/jobs",
+            json={
+                "account_id": account_id,
+                "title": title,
+                "content": content,
+                "excerpt": excerpt,
+                "images": images or [],
+            },
+            headers={"X-Idempotency-Key": idempotency_key},
+        )
+
+    async def get_social_job(self, job_id: int) -> dict[str, Any]:
+        if job_id < 1:
+            raise ValueError("Invalid social job ID")
+        return await self.request("GET", f"social-publication/jobs/{job_id}")
