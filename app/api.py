@@ -31,12 +31,23 @@ class PasswordInput(BaseModel):
     new_password: str = Field(min_length=8, max_length=500)
 
 
+class KeywordSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    library_id: int = Field(ge=1)
+    item_id: int = Field(ge=1)
+    page: int = Field(default=1, ge=1, le=10000)
+
+
 class GeoFlowContext(BaseModel):
     """Selected library IDs sent with a chat message after loading /api/geoflow/catalog."""
 
     model_config = ConfigDict(extra="forbid")
     knowledge_base_ids: list[int] = Field(default_factory=list, max_length=5)
     title_library_ids: list[int] = Field(default_factory=list, max_length=3)
+    keyword_library_ids: list[int] = Field(default_factory=list, max_length=3)
+    image_library_ids: list[int] = Field(default_factory=list, max_length=3)
+    social_account_ids: list[int] = Field(default_factory=list, max_length=3)
+    keywords: list[KeywordSelection] = Field(default_factory=list, max_length=20)
 
 
 class MessageInput(BaseModel):
@@ -45,10 +56,17 @@ class MessageInput(BaseModel):
     file_ids: list[str] = Field(default_factory=list, max_length=8)
     skills: list[str] = Field(default_factory=list, max_length=4)
     geoflow_context: GeoFlowContext | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class MCPInput(BaseModel):
     mcpServers: dict
+
+
+class ModelConfigInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    models: list[str] = Field(default_factory=list, max_length=32)
+    vision_model: str = Field(default="", max_length=200)
 
 
 def create_app(settings=None, model=None):
@@ -67,6 +85,21 @@ def create_app(settings=None, model=None):
             if weak:
                 raise ValueError("正式运行前必须修改默认 admin 密码")
     runtime = Runtime(settings, store, model=model)
+    saved_models = [
+        value.strip() for value in store.config("models", "").splitlines() if value.strip()
+    ]
+    runtime.available_models = list(
+        dict.fromkeys(
+            name.strip()
+            for name in [
+                settings.model,
+                *settings.models.split(","),
+                *saved_models,
+                settings.vision_model,
+            ]
+            if name.strip()
+        )
+    )
 
     @asynccontextmanager
     async def lifespan(app):
@@ -185,14 +218,96 @@ def create_app(settings=None, model=None):
 
     @app.get("/api/capabilities")
     def capabilities(user=Depends(authenticated)):
+        models, vision_model = read_model_config()
+        all_configured_models = [
+            settings.model,
+            *settings.models.split(","),
+            *models,
+            settings.vision_model,
+            vision_model,
+        ]
+        model_names = list(
+            dict.fromkeys(name.strip() for name in all_configured_models if name.strip())
+        )
         return {
             "model_ready": runtime.model is not None,
             "vision": settings.vision_enabled,
+            "models": model_names,
+            "vision_model": vision_model if settings.vision_enabled else "",
             "search": settings.search_provider != "none",
             "demo": settings.demo_account,
             "max_upload_mb": settings.max_upload_mb,
             "geoflow": runtime.geoflow.enabled,
         }
+
+    def read_model_config():
+        models = [
+            value.strip() for value in store.config("models", "").splitlines() if value.strip()
+        ]
+        return models, store.config("vision_model", "")
+
+    @app.get("/api/models/config")
+    def model_config(user=Depends(administrator)):
+        models, vision_model = read_model_config()
+        environment_models = [
+            settings.model,
+            *settings.models.split(","),
+            settings.vision_model,
+        ]
+        environment_model_names = list(
+            dict.fromkeys(value.strip() for value in environment_models if value.strip())
+        )
+        available_models = list(
+            dict.fromkeys(
+                value.strip() for value in [*environment_model_names, *models] if value.strip()
+            )
+        )
+        return {
+            "models": available_models,
+            "managed_models": [name for name in models if name not in environment_model_names],
+            "environment_models": environment_model_names,
+            "default_model": settings.model,
+            "vision_model": vision_model or settings.vision_model,
+            "vision_enabled": settings.vision_enabled,
+            "model_ready": runtime.model is not None,
+        }
+
+    @app.put("/api/models/config")
+    def save_model_config(body: ModelConfigInput, user=Depends(administrator)):
+        if runtime.tasks:
+            raise HTTPException(409, "璇风瓑寰呭綋鍓嶄换鍔″畬鎴愬悗鍐嶄慨鏀规ā鍨嬮厤缃?")
+        models = [name.strip() for name in body.models]
+        if any(not name for name in models) or len(models) != len(set(models)):
+            raise HTTPException(422, "妯″瀷鍚嶇О涓嶈兘涓虹┖鎴栭噸澶?")
+        vision_model = body.vision_model.strip()
+        available_models = {
+            value.strip()
+            for value in [
+                settings.model,
+                *settings.models.split(","),
+                settings.vision_model,
+                *models,
+            ]
+            if value.strip()
+        }
+        if vision_model and vision_model not in available_models:
+            raise HTTPException(422, "瑙嗚妯″瀷蹇呴』鏄垪琛ㄤ腑鐨勬ā鍨?")
+        store.set_config("models", "\n".join(models))
+        store.set_config("vision_model", vision_model)
+        runtime.available_models = list(
+            dict.fromkeys(
+                name.strip()
+                for name in [
+                    settings.model,
+                    *settings.models.split(","),
+                    *models,
+                    settings.vision_model,
+                    vision_model,
+                ]
+                if name.strip()
+            )
+        )
+        return {"ok": True}
 
     @app.get("/api/geoflow/catalog")
     async def geoflow_catalog(user=Depends(authenticated)):
@@ -211,6 +326,8 @@ def create_app(settings=None, model=None):
             **catalog,
             "title_libraries": catalog.get("title_libraries", []),
             "knowledge_bases": catalog.get("knowledge_bases", []),
+            "keyword_libraries": catalog.get("keyword_libraries", []),
+            "image_libraries": catalog.get("image_libraries", []),
         }
 
     @app.get("/api/geoflow/materials/{material_type}")
@@ -227,9 +344,35 @@ def create_app(settings=None, model=None):
         try:
             return await runtime.geoflow.material_libraries(material_type, search, page, per_page)
         except ValueError:
-            raise HTTPException(422, "素材库类型仅支持 knowledge 或 title") from None
+            raise HTTPException(422, "不支持的素材库类型") from None
         except Exception:
             raise HTTPException(502, "GEOFlow 素材库读取失败，请检查连接和权限") from None
+
+    @app.get("/api/geoflow/materials/{material_type}/{material_id}/items")
+    async def geoflow_material_items(
+        material_type: str, material_id: int, page: int = 1, user=Depends(authenticated)
+    ):
+        if not runtime.geoflow.enabled:
+            raise HTTPException(503, "GEOFlow 未配置，请先配置地址和 API Token")
+        try:
+            return await runtime.geoflow.material_items(material_type, material_id, page)
+        except ValueError:
+            raise HTTPException(422, "不支持的素材库或条目") from None
+        except Exception:
+            raise HTTPException(502, "GEOFlow 条目读取失败，请检查连接和权限") from None
+
+    @app.get("/api/geoflow/social/{resource}")
+    async def geoflow_social(resource: str, user=Depends(authenticated)):
+        if resource not in {"platforms", "accounts"}:
+            raise HTTPException(422, "不支持的社媒资源")
+        if not runtime.geoflow.enabled:
+            raise HTTPException(503, "GEOFlow 未配置，请先配置地址和 API Token")
+        try:
+            if resource == "platforms":
+                return await runtime.geoflow.social_platforms()
+            return await runtime.geoflow.social_accounts()
+        except Exception:
+            raise HTTPException(502, "GEOFlow 社媒资源读取失败，请检查连接和权限") from None
 
     @app.get("/api/threads")
     def threads(user=Depends(authenticated)):
@@ -291,6 +434,9 @@ def create_app(settings=None, model=None):
             raise HTTPException(422, "请输入内容或上传文件")
         if runtime.model is None:
             raise HTTPException(503, "请先在 .env 配置模型地址、模型名称和密钥并重启服务")
+        selected_model = body.model or settings.model or None
+        if body.model and selected_model not in runtime.available_models:
+            raise HTTPException(422, "鎵€閫夋ā鍨嬩笉鍦ㄥ彲鐢ㄥ垪琛ㄤ腑")
         if len(runtime.tasks) >= settings.max_concurrent_runs:
             raise HTTPException(429, "服务繁忙，请稍后重试")
         if store.query(
@@ -306,10 +452,12 @@ def create_app(settings=None, model=None):
         if any(f["media_type"].startswith("image/") for f in files) and not settings.vision_enabled:
             raise HTTPException(422, "当前模型未启用视觉，请配置 AGENT_VISION_ENABLED 后再发送图片")
         prompt = body.content.strip() or "请分析这些附件"
+        _, configured_vision_model = read_model_config()
+        vision_model = configured_vision_model or settings.vision_model
+        if any(f["media_type"].startswith("image/") for f in files) and vision_model:
+            selected_model = vision_model
         geoflow_context = None
-        if body.geoflow_context and (
-            body.geoflow_context.knowledge_base_ids or body.geoflow_context.title_library_ids
-        ):
+        if body.geoflow_context and any(body.geoflow_context.model_dump().values()):
             if not runtime.geoflow.enabled:
                 raise HTTPException(503, "已选择 GEOFlow 素材，但 GEOFlow 尚未配置")
             try:
@@ -317,38 +465,70 @@ def create_app(settings=None, model=None):
             except Exception:
                 raise HTTPException(502, "GEOFlow 目录读取失败，无法校验所选素材") from None
 
-            def selected_names(key, ids):
+            def selected_rows(key, ids):
                 values = catalog.get(key, []) if isinstance(catalog, dict) else []
                 rows = values if isinstance(values, list) else []
                 by_id = {str(item.get("id")): item for item in rows if isinstance(item, dict)}
                 missing = [item_id for item_id in ids if str(item_id) not in by_id]
                 if missing:
                     raise HTTPException(422, f"所选 GEOFlow 素材不可用: {missing}")
-                return [
-                    str(
-                        by_id[str(item_id)].get("name")
-                        or by_id[str(item_id)].get("title")
-                        or item_id
-                    )
-                    for item_id in ids
-                ]
+                return [by_id[str(item_id)] for item_id in dict.fromkeys(ids)]
 
-            knowledge_names = selected_names(
-                "knowledge_bases", body.geoflow_context.knowledge_base_ids
-            )
-            title_names = selected_names("title_libraries", body.geoflow_context.title_library_ids)
-            geoflow_context = {
-                "knowledge_bases": [
-                    {"id": item_id, "name": name}
-                    for item_id, name in zip(
-                        body.geoflow_context.knowledge_base_ids, knowledge_names
+            geoflow_context = {}
+            for key, field in (
+                ("knowledge_bases", "knowledge_base_ids"),
+                ("title_libraries", "title_library_ids"),
+                ("keyword_libraries", "keyword_library_ids"),
+                ("image_libraries", "image_library_ids"),
+            ):
+                geoflow_context[key] = [
+                    {"id": row["id"], "name": str(row.get("name") or row.get("title") or row["id"])}
+                    for row in selected_rows(key, getattr(body.geoflow_context, field))
+                ]
+            try:
+                if body.geoflow_context.social_account_ids:
+                    accounts = await runtime.geoflow.social_accounts()
+                    catalog["social_accounts"] = accounts.get("items", [])
+                    geoflow_context["social_accounts"] = [
+                        {
+                            "id": row["id"],
+                            "name": str(row.get("account_name") or row["id"]),
+                            "platform": row.get("platform", ""),
+                        }
+                        for row in selected_rows(
+                            "social_accounts", body.geoflow_context.social_account_ids
+                        )
+                    ]
+                pages = {}
+                geoflow_context["keywords"] = []
+                for keyword in body.geoflow_context.keywords:
+                    selected_rows("keyword_libraries", [keyword.library_id])
+                    key = (keyword.library_id, keyword.page)
+                    if key not in pages:
+                        pages[key] = await runtime.geoflow.material_items(
+                            "keywords", keyword.library_id, keyword.page
+                        )
+                    row = next(
+                        (
+                            item
+                            for item in pages[key].get("items", [])
+                            if str(item.get("id")) == str(keyword.item_id)
+                        ),
+                        None,
                     )
-                ],
-                "title_libraries": [
-                    {"id": item_id, "name": name}
-                    for item_id, name in zip(body.geoflow_context.title_library_ids, title_names)
-                ],
-            }
+                    if row is None:
+                        raise HTTPException(422, "所选关键词已不可用，请重新选择")
+                    geoflow_context["keywords"].append(
+                        {
+                            "id": keyword.item_id,
+                            "library_id": keyword.library_id,
+                            "name": str(row.get("keyword") or keyword.item_id),
+                        }
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(502, "GEOFlow 所选资源校验失败，请重试") from None
         run = {"id": new_id(), "thread_id": thread_id, "status": "queued", "created": time.time()}
         try:
             with store.connect() as db:
@@ -365,7 +545,7 @@ def create_app(settings=None, model=None):
                 )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "此对话已有任务正在执行") from None
-        runtime.start(run, prompt, files, body.skills, geoflow_context)
+        runtime.start(run, prompt, files, body.skills, geoflow_context, selected_model)
         return run
 
     def own_run(user_id, run_id):

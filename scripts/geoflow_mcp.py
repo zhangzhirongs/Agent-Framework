@@ -202,7 +202,7 @@ def create_server(environment):
     async def geoflow_list_social_accounts(
         platform: Annotated[str | None, Field(min_length=1, max_length=40)] = None,
     ) -> dict[str, Any]:
-        """List active social accounts and executor readiness, without credentials. Requires social:read."""
+        """List active social accounts and executor readiness. Requires social:read."""
         return await read(
             "social-publication/accounts", {"platform": platform} if platform else None
         )
@@ -255,7 +255,7 @@ def create_server(environment):
         keywords: str | None = None,
         meta_description: Annotated[str | None, Field(max_length=320)] = None,
     ) -> dict[str, Any]:
-        """Update a GEOFlow article draft. Requires articles:write; confirm the target article first."""
+        """Update a GEOFlow article draft. Requires articles:write; confirm the target first."""
         payload = {
             key: value
             for key, value in {
@@ -289,7 +289,10 @@ def create_server(environment):
         images: list[Annotated[str, Field(min_length=1, max_length=2048)]] | None = None,
         idempotency_key: Annotated[str | None, Field(min_length=1, max_length=128)] = None,
     ) -> dict[str, Any]:
-        """Queue a social publish job for the explicitly selected account. Requires social:publish. This queues work and does not mean the platform has published it."""
+        """Queue a social publish job for the selected account. Requires social:publish.
+
+        This queues work and does not mean the platform has published it.
+        """
         payload = {"account_id": account_id, "title": title, "content": content}
         if excerpt is not None:
             payload["excerpt"] = excerpt

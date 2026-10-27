@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AGENT_", env_file=ROOT / ".env", extra="ignore")
     model: str = ""
+    models: str = ""
+    vision_model: str = ""
     api_key: SecretStr = SecretStr("")
     base_url: str = ""
     api_mode: Literal["chat", "responses"] = "chat"

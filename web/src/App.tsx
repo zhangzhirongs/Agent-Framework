@@ -11,6 +11,13 @@ import {
 } from "react";
 import {
   ArrowRight,
+  ArrowDown,
+  Building2,
+  ChartNoAxesColumnIncreasing,
+  CircleAlert,
+  CircleCheck,
+  BrainCircuit,
+  ChevronRight,
   Bot,
   Check,
   ChevronLeft,
@@ -21,14 +28,19 @@ import {
   FileSpreadsheet,
   FileText,
   Library,
+  LoaderCircle,
+  Megaphone,
   KeyRound,
   LogOut,
   MessageSquare,
   Moon,
   Paperclip,
+  PenLine,
   Plug,
   Plus,
+  Send,
   Sun,
+  Tags,
   Trash2,
   Upload,
   UserRound,
@@ -63,6 +75,8 @@ import {
   MorphPopoverTrigger,
 } from "./components/motion/popover-morph";
 import { PromptInput } from "./components/agents/prompt-input";
+import { TaskSetup } from "./components/agents/task-setup";
+import { emptySelection, type GeoCatalog, type TaskId } from "./lib/quick-tasks";
 import { cn } from "./lib/utils";
 import { documentFormat } from "./lib/document-format";
 
@@ -650,6 +664,198 @@ function MCPPage({
   );
 }
 
+function ModelsPage({
+  onError,
+  onSaved,
+}: {
+  onError: (message: string) => void;
+  onSaved: () => void;
+}) {
+  const [models, setModels] = useState<string[]>([]);
+  const [environmentModels, setEnvironmentModels] = useState<string[]>([]);
+  const [defaultModel, setDefaultModel] = useState("");
+  const [visionModel, setVisionModel] = useState("");
+  const [visionEnabled, setVisionEnabled] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
+  const [newModel, setNewModel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const availableModels = [...new Set([...environmentModels, ...models])];
+  useEffect(() => {
+    request<{
+      models: string[];
+      managed_models: string[];
+      environment_models: string[];
+      default_model: string;
+      vision_model: string;
+      vision_enabled: boolean;
+      model_ready: boolean;
+    }>("/models/config")
+      .then((config) => {
+        setModels(config.managed_models);
+        setEnvironmentModels(config.environment_models);
+        setDefaultModel(config.default_model);
+        setVisionModel(config.vision_model);
+        setVisionEnabled(config.vision_enabled);
+        setModelReady(config.model_ready);
+      })
+      .catch((error) => onError(error.message));
+  }, [onError]);
+  const save = async () => {
+    setBusy(true);
+    setSaved(false);
+    try {
+      await request("/models/config", "PUT", { models, vision_model: visionModel });
+      await onSaved();
+      setSaved(true);
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const addModel = () => {
+    const name = newModel.trim();
+    if (!name || availableModels.includes(name)) return;
+    setModels((items) => [...items, name]);
+    setNewModel("");
+    setSaved(false);
+  };
+  const removeModel = (name: string) => {
+    setModels((items) => items.filter((item) => item !== name));
+    if (visionModel === name) setVisionModel("");
+    setSaved(false);
+  };
+  return (
+    <section className="settings-page model-settings">
+      {!modelReady && (
+        <div className="model-config-warning" role="status">
+          <CircleAlert size={18} aria-hidden="true" />
+          <p>
+          模型服务未启用，请在服务器 .env 配置 AGENT_MODEL、AGENT_BASE_URL 和 AGENT_API_KEY 后重启服务。
+          </p>
+        </div>
+      )}
+      <div className="model-page-heading">
+        <div>
+          <div className="model-heading-title">
+            <BrainCircuit size={20} />
+            <h2>模型目录</h2>
+            <span className="model-count">{availableModels.length}</span>
+          </div>
+          <p>管理聊天模型，并指定处理图片的视觉模型。</p>
+        </div>
+        <div className="model-heading-actions">
+          <span className={`model-service-state ${modelReady ? "ready" : "offline"}`}>
+            {modelReady ? <CircleCheck size={15} /> : <CircleAlert size={15} />}
+            {modelReady ? "配置完整" : "配置不完整"}
+          </span>
+          <Button disabled={busy} onClick={() => void save()}>
+            <Check size={16} />
+            {busy ? "保存中…" : "保存"}
+          </Button>
+        </div>
+      </div>
+      <section className="model-section" aria-labelledby="available-models-title">
+        <div className="model-section-heading">
+          <div>
+            <h3 id="available-models-title">可用模型</h3>
+            <p>这些模型会出现在聊天输入框的切换菜单中。</p>
+          </div>
+          {saved && <span className="model-saved"><CircleCheck size={15} />已保存</span>}
+        </div>
+        <form
+          className="model-entry-row"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addModel();
+          }}
+        >
+          <Input
+            value={newModel}
+            disabled={busy}
+            onChange={(value) => {
+              setNewModel(value);
+              setSaved(false);
+            }}
+            placeholder="输入模型 ID"
+            aria-label="模型 ID"
+          />
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={busy || !newModel.trim() || availableModels.includes(newModel.trim())}
+          >
+            <Plus size={16} />添加模型
+          </Button>
+        </form>
+        {availableModels.length ? (
+          <div className="model-list">
+            {availableModels.map((name) => {
+              const fromEnvironment = environmentModels.includes(name);
+              return (
+                <div className="model-row" key={name}>
+                  <span className="model-row-icon"><BrainCircuit size={17} /></span>
+                  <code title={name}>{name}</code>
+                  <div className="model-tags">
+                    {name === defaultModel && <span className="model-tag default">默认</span>}
+                    {name === visionModel && <span className="model-tag vision">视觉</span>}
+                    {fromEnvironment && <span className="model-tag source">服务器配置</span>}
+                  </div>
+                  {!fromEnvironment && (
+                    <IconButton
+                      label={`移除 ${name}`}
+                      disabled={busy}
+                      onClick={() => removeModel(name)}
+                    >
+                      <Trash2 size={15} />
+                    </IconButton>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="model-empty">尚未登记模型。输入服务商提供的模型 ID 以添加。</p>
+        )}
+      </section>
+      <section className="model-section vision-section" aria-labelledby="vision-model-title">
+        <div className="model-section-heading">
+          <div>
+            <h3 id="vision-model-title">图片理解</h3>
+            <p>上传图片时，可将请求自动交给指定的视觉模型。</p>
+          </div>
+          <span className={`model-capability ${visionEnabled ? "enabled" : "disabled"}`}>
+            <Eye size={15} />{visionEnabled ? "已启用" : "未启用"}
+          </span>
+        </div>
+        <label className="vision-model-field">
+          <span>视觉模型</span>
+          <select
+            value={visionModel}
+            disabled={!visionEnabled || !availableModels.length || busy}
+            onChange={(event) => {
+              setVisionModel(event.target.value);
+              setSaved(false);
+            }}
+          >
+            <option value="">使用聊天所选模型</option>
+            {availableModels.map((name) => (
+              <option value={name} key={name}>{name}</option>
+            ))}
+          </select>
+          {!visionEnabled && (
+            <small>需在服务器环境中设置 AGENT_VISION_ENABLED=true 后重启服务。</small>
+          )}
+        </label>
+      </section>
+      <p className="model-config-note">
+        模型服务地址、协议模式和密钥由服务器 .env 提供；此处登记的模型 ID 不会自动向服务商验证。
+      </p>
+    </section>
+  );
+}
+
 function Workspace({
   profile,
   signOut,
@@ -666,10 +872,15 @@ function Workspace({
   const [skills, setSkills] = useState<Skill[]>([]),
     [selected, setSelected] = useState<string[]>([]),
     [toolsOpen, setToolsOpen] = useState(false);
-  const [geoflowCatalog, setGeoflowCatalog] = useState<{
-    knowledge_bases: { id: number | string; name?: string; title?: string }[];
-    title_libraries: { id: number | string; name?: string; title?: string }[];
-  } | null>(null);
+  const [geoflowCatalog, setGeoflowCatalog] = useState<GeoCatalog | null>(null);
+  const [taskSetup, setTaskSetup] = useState<TaskId | null>(null);
+  const [taskContext, setTaskContext] = useState(emptySelection);
+  const [taskLabels, setTaskLabels] = useState<string[]>([]);
+  const [preparedTask, setPreparedTask] = useState<TaskId | null>(null);
+  const [taskFields, setTaskFields] = useState<Record<string, string>>({});
+  const [taskSkills, setTaskSkills] = useState<string[]>([]);
+  const [taskTemplate, setTaskTemplate] = useState("");
+  const [taskPromptDraft, setTaskPromptDraft] = useState("");
   const [selectedKnowledge, setSelectedKnowledge] = useState<string[]>([]),
     [selectedTitles, setSelectedTitles] = useState<string[]>([]);
   const [active, setActive] = useState<Run | null>(null),
@@ -682,19 +893,79 @@ function Workspace({
     [previewTabs, setPreviewTabs] = useState<Attachment[]>([]),
     [passwordOpen, setPasswordOpen] = useState(false);
   const [previewWidth, setPreviewWidth] = useState(42);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("agent-sidebar-collapsed") === "true",
+  );
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [dark, setDark] = useState(
     () => localStorage.getItem("agent-theme") === "dark",
   );
   const source = useRef<EventSource | null>(null),
     uploadInput = useRef<HTMLInputElement>(null),
+    messageScroll = useRef<HTMLDivElement>(null),
     bottom = useRef<HTMLDivElement>(null),
     selection = useRef("");
   const [caps, setCaps] = useState<{
     model_ready: boolean;
+    models: string[];
+    vision_model: string;
     max_upload_mb: number;
     demo: boolean;
   } | null>(null);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [enabledMcpCount, setEnabledMcpCount] = useState<number | null>(null);
+  const quickStarts: {
+    id: TaskId;
+    label: string;
+    icon: ReactNode;
+    prompt: string;
+    geoflow?: boolean;
+  }[] = [
+    {
+      label: "品牌建设",
+      id: "brand",
+      icon: <Building2 size={15} />,
+      prompt: "请协助我梳理品牌定位。先询问品牌名称、目标客户、核心优势和市场，再整理定位建议与品牌表达。",
+    },
+    {
+      label: "关键词拓展",
+      id: "keywords",
+      icon: <Tags size={15} />,
+      prompt: "请为我的产品或业务拓展关键词，按品牌词、产品词、问题词和长尾词分类，并说明对应的搜索意图。",
+    },
+    {
+      label: "内容创作",
+      id: "content",
+      icon: <PenLine size={15} />,
+      prompt: "请帮我创作一篇内容。先确认主题、目标读者、发布平台和表达风格，再给出可编辑的初稿。",
+    },
+    {
+      label: "账号发布",
+      id: "publish",
+      icon: <Send size={15} />,
+      prompt: "请协助准备一条账号发布内容。先确认发布平台、账号、主题和目标，再生成待审核文案；没有明确选择前不要提交发布任务。",
+    },
+    {
+      label: "媒体投放",
+      id: "media",
+      icon: <Megaphone size={15} />,
+      prompt: "请为我的产品或活动拟定媒体投放方案。先确认预算、目标人群、投放平台和转化目标，再整理渠道与衡量指标。",
+    },
+    {
+      label: "GEO 数据分析",
+      id: "analysis",
+      icon: <ChartNoAxesColumnIncreasing size={15} />,
+      prompt: "请基于 GEOFlow 中可用的数据分析我的品牌或主题。先检查可用目录和数据，再给出有依据的发现，并明确说明数据缺口。",
+      geoflow: true,
+    },
+  ];
   const reloadThreads = () => request<Thread[]>("/threads").then(setThreads);
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      localStorage.setItem("agent-sidebar-collapsed", String(!collapsed));
+      return !collapsed;
+    });
+  };
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("agent-theme", dark ? "dark" : "light");
@@ -755,6 +1026,12 @@ function Workspace({
     request<typeof caps>("/capabilities")
       .then(setCaps)
       .catch((e) => setError(e.message));
+    request<{ name: string; enabled: boolean }[]>("/connectors")
+      .then((items) => setEnabledMcpCount(items.filter((item) => item.enabled).length))
+      .catch(() => setEnabledMcpCount(null));
+    request<{ name: string; enabled: boolean }[]>("/connectors")
+      .then((items) => setEnabledMcpCount(items.filter((item) => item.enabled).length))
+      .catch(() => setEnabledMcpCount(null));
   }, []);
   useEffect(() => {
     request<Skill[]>("/skills")
@@ -786,7 +1063,11 @@ function Workspace({
     return () => clearInterval(timer);
   }, [active?.id]);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
+    const container = messageScroll.current;
+    if (!container) return;
+    const nearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+    if (nearBottom) bottom.current?.scrollIntoView({ block: "end" });
   }, [detail?.messages.length, live]);
   const ensureThread = async () => {
     if (current) return current;
@@ -796,7 +1077,7 @@ function Workspace({
     await reloadThreads();
     return t.id;
   };
-  const send = async () => {
+  const send = async (requestedModel?: string) => {
     if (
       busy ||
       active ||
@@ -813,15 +1094,24 @@ function Workspace({
         file_ids: pending.map((f) => f.id),
         skills: selected,
         geoflow_context: {
+          ...taskContext,
+          keywords: taskContext.keywords.map(({ library_id, item_id, page }) => ({ library_id, item_id, page })),
           knowledge_base_ids: selectedKnowledge.map(Number),
           title_library_ids: selectedTitles.map(Number),
         },
+        model: requestedModel || selectedModel || caps?.models[0],
       });
       setPrompt("");
       setPending([]);
       setSelected([]);
       setSelectedKnowledge([]);
       setSelectedTitles([]);
+      setTaskContext(emptySelection());
+      setTaskLabels([]);
+      setPreparedTask(null);
+      setTaskSkills([]);
+      setTaskTemplate("");
+      setTaskPromptDraft("");
       setToolsOpen(false);
       await load(id);
       await reloadThreads();
@@ -863,6 +1153,15 @@ function Workspace({
     setPrompt("");
     setPending([]);
     setSelected([]);
+    setSelectedKnowledge([]);
+    setSelectedTitles([]);
+    setTaskContext(emptySelection());
+    setTaskLabels([]);
+    setPreparedTask(null);
+    setTaskSkills([]);
+    setTaskTemplate("");
+    setTaskPromptDraft("");
+    setTaskSetup(null);
     setCurrent(id);
     setError("");
   };
@@ -918,12 +1217,25 @@ function Workspace({
   };
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className="brand">
           <img src="/brand/robot.svg" alt="" />
+          <IconButton
+            label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+          >
+            {sidebarCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
+          </IconButton>
           <strong>智能体</strong>
         </div>
-        <Button variant="outline" className="new-chat" onClick={() => pick("")}>
+        <Button
+          variant="outline"
+          className="new-chat"
+          title="新建对话"
+          aria-label="新建对话"
+          onClick={() => pick("")}
+        >
           <Plus size={17} />
           新对话
         </Button>
@@ -931,6 +1243,8 @@ function Workspace({
           <Button
             variant="ghost"
             className={view === "skills" ? "selected" : ""}
+            title="技能"
+            aria-label="技能"
             onClick={() => setView("skills")}
           >
             <WandSparkles size={17} />
@@ -939,11 +1253,25 @@ function Workspace({
           <Button
             variant="ghost"
             className={view === "mcp" ? "selected" : ""}
+            title="MCP 连接器"
+            aria-label="MCP 连接器"
             onClick={() => setView("mcp")}
           >
             <Plug size={17} />
             MCP 连接器
           </Button>
+          {profile.is_admin && (
+            <Button
+              variant="ghost"
+              className={view === "models" ? "selected" : ""}
+              title="模型配置"
+              aria-label="模型配置"
+              onClick={() => setView("models")}
+            >
+              <BrainCircuit size={17} />
+              模型配置
+            </Button>
+          )}
         </nav>
         <div className="thread-list">
           {threads.map((t) => (
@@ -1009,12 +1337,23 @@ function Workspace({
       <main className="workspace">
         <header className="workspace-header">
           <h1>
-            {view === "chat"
+            {view === "models" ? "模型配置" : view === "chat"
               ? detail?.thread.title || "新对话"
               : view === "skills"
                 ? "技能"
                 : "MCP 连接器"}
           </h1>
+          {view === "chat" && (
+            <button
+              type="button"
+              className="workspace-mcp-shortcut"
+              onClick={() => setView("mcp")}
+              title="查看 MCP 连接器配置"
+            >
+              <Plug size={15} />
+              <span>{enabledMcpCount === null ? "MCP" : `${enabledMcpCount} 个 MCP 已启用`}</span>
+            </button>
+          )}
           {view !== "chat" && (
             <IconButton label="返回对话" onClick={() => setView("chat")}>
               <ChevronLeft size={18} />
@@ -1031,17 +1370,36 @@ function Workspace({
         )}
         {view === "skills" ? (
           <SkillsPage admin={profile.is_admin} onError={setError} />
+        ) : view === "models" && profile.is_admin ? (
+          <ModelsPage
+            onError={setError}
+            onSaved={async () => {
+              const updated = await request<typeof caps>("/capabilities");
+              setCaps(updated);
+              setSelectedModel("");
+            }}
+          />
         ) : view === "mcp" ? (
           <MCPPage admin={profile.is_admin} onError={setError} />
         ) : (
           <div className="chat-layout">
             <section className="conversation">
-              <div className="message-scroll">
+              <div
+                ref={messageScroll}
+                className="message-scroll"
+                onScroll={(event) => {
+                  const element = event.currentTarget;
+                  setShowScrollBottom(
+                    element.scrollHeight - element.scrollTop - element.clientHeight > 120,
+                  );
+                }}
+              >
                 {!detail?.messages.length && !active && (
                   <div className="welcome">
                     <span className="welcome-mark">
                       <Bot size={30} />
                     </span>
+                    <p>描述目标，选择一个任务入口，智能体会结合可用模型与工具协助你。</p>
                     <h2>今天想聊什么？</h2>
                   </div>
                 )}
@@ -1072,6 +1430,7 @@ function Workspace({
                   <article className="message assistant">
                     <div className="message-content">{live}</div>
                     <p className="run-status" role="status">
+                      <LoaderCircle className="loading-spinner" size={15} aria-hidden="true" />
                       {activity} · {elapsed} 秒
                     </p>
                   </article>
@@ -1087,6 +1446,17 @@ function Workspace({
                   </p>
                 )}
                 <div ref={bottom} />
+                {showScrollBottom && (
+                  <button
+                    type="button"
+                    className="scroll-bottom"
+                    aria-label="回到底部"
+                    title="回到底部"
+                    onClick={() => bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" })}
+                  >
+                    <ArrowDown size={17} />
+                  </button>
+                )}
               </div>
               <div className="composer-area">
                 {!caps?.model_ready && caps && (
@@ -1096,9 +1466,15 @@ function Workspace({
                   className="composer"
                   aria-label="消息"
                   value={prompt}
+                  models={(caps?.models ?? []).map((name) => ({
+                    value: name,
+                    label: name === caps?.vision_model ? `${name} (Vision)` : name,
+                  }))}
+                  model={selectedModel || caps?.models[0]}
+                  onModelChange={setSelectedModel}
                   onValueChange={setPrompt}
                   placeholder={selected.length ? "" : "发送消息…"}
-                  onSubmit={() => send()}
+                  onSubmit={(_value, model) => { if (model) setSelectedModel(model); void send(model); }}
                   loading={!!active}
                   disabled={busy && !active}
                   submitDisabled={!caps?.model_ready}
@@ -1117,6 +1493,15 @@ function Workspace({
                   }}
                   header={
                     <>
+                      {preparedTask && (
+                        <div className="selected-skills">
+                          <button type="button" className="library-mention" disabled={busy || !!active} onClick={() => setTaskSetup(preparedTask)}>
+                            {quickStarts.find((task) => task.id === preparedTask)?.label} · 重新选择
+                          </button>
+                          <IconButton label="移除任务资源" disabled={busy || !!active} onClick={() => { setTaskContext(emptySelection()); setTaskLabels([]); setPreparedTask(null); setSelectedKnowledge([]); setSelectedTitles([]); }}><X size={12} /></IconButton>
+                          {taskLabels.filter((label) => !label.startsWith("知识库 ·") && !label.startsWith("标题库 ·")).map((label) => <span className="library-mention" key={label}>{label}</span>)}
+                        </div>
+                      )}
                       {pending.length > 0 && (
                         <div className="pending-files">
                           {pending.map((f) => (
@@ -1235,6 +1620,22 @@ function Workspace({
                     </MorphPopover>
                   }
                 />
+                {!detail?.messages.length && !active && (
+                  <div className="quick-starts" aria-label="快捷任务">
+                    {quickStarts.map((task) => (
+                      <button
+                        type="button"
+                        className="quick-start"
+                        key={task.label}
+                        disabled={busy || !caps?.model_ready}
+                        onClick={() => setTaskSetup(task.id)}
+                      >
+                        {task.icon}
+                        <span>{task.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <input
                   type="file"
                   multiple
@@ -1266,6 +1667,35 @@ function Workspace({
           </div>
         )}
       </main>
+      {taskSetup && (
+        <TaskSetup
+          key={taskSetup}
+          task={quickStarts.find((task) => task.id === taskSetup)!}
+          availableSkills={skills}
+          initialSelection={preparedTask === taskSetup ? { ...taskContext, knowledge_base_ids: selectedKnowledge.map(Number), title_library_ids: selectedTitles.map(Number) } : undefined}
+          initialFields={preparedTask === taskSetup ? taskFields : undefined}
+          initialSkills={preparedTask === taskSetup ? taskSkills : undefined}
+          initialTemplate={preparedTask === taskSetup ? taskTemplate : undefined}
+          initialPrompt={preparedTask === taskSetup ? taskPromptDraft : undefined}
+          onClose={() => setTaskSetup(null)}
+          onApply={(content, context, labels, catalog, fields, selectedTaskSkills, template, promptDraft) => {
+            setTaskFields(fields);
+            setTaskSkills(selectedTaskSkills);
+            setTaskTemplate(template);
+            setTaskPromptDraft(promptDraft);
+            setPrompt(content);
+            setTaskContext(context);
+            setTaskLabels(labels);
+            setPreparedTask(taskSetup);
+            setGeoflowCatalog(catalog);
+            setSelectedKnowledge(context.knowledge_base_ids.map(String));
+            setSelectedTitles(context.title_library_ids.map(String));
+            setSelected(selectedTaskSkills);
+            setToolsOpen(false);
+            setTaskSetup(null);
+          }}
+        />
+      )}
       {passwordOpen && (
         <PasswordDialog
           onClose={() => setPasswordOpen(false)}

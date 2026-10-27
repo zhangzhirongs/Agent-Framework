@@ -44,17 +44,23 @@ class Runtime:
         self.tasks = {}
         self.client = None
         self.model = model
-        if self.model is None and settings.model_ready:
+        factory = (
+            OpenAIChatCompletionsModel if settings.api_mode == "chat" else OpenAIResponsesModel
+        )
+        if settings.model_ready:
             self.client = AsyncOpenAI(
                 api_key=settings.api_key.get_secret_value(),
                 base_url=settings.base_url,
                 timeout=settings.model_timeout,
                 max_retries=0,
             )
-            factory = (
-                OpenAIChatCompletionsModel if settings.api_mode == "chat" else OpenAIResponsesModel
-            )
-            self.model = factory(model=settings.model, openai_client=self.client)
+            if self.model is None:
+                self.model = factory(model=settings.model, openai_client=self.client)
+        self.model_factory = factory if settings.model_ready else None
+        configured_models = [settings.model, *settings.models.split(","), settings.vision_model]
+        self.available_models = list(
+            dict.fromkeys(name.strip() for name in configured_models if name.strip())
+        )
 
     def tools(self, thread_id, created_files):
         @function_tool
@@ -142,16 +148,18 @@ class Runtime:
                 """Read status for a social executor job."""
                 return await self.geoflow.get_social_job(job_id)
 
-            tools.extend([
-                geoflow_catalog,
-                geoflow_search_articles,
-                geoflow_get_article,
-                geoflow_save_article_draft,
-                geoflow_list_social_platforms,
-                geoflow_list_social_accounts,
-                geoflow_enqueue_social_publication,
-                geoflow_get_social_job,
-            ])
+            tools.extend(
+                [
+                    geoflow_catalog,
+                    geoflow_search_articles,
+                    geoflow_get_article,
+                    geoflow_save_article_draft,
+                    geoflow_list_social_platforms,
+                    geoflow_list_social_accounts,
+                    geoflow_enqueue_social_publication,
+                    geoflow_get_social_job,
+                ]
+            )
 
         if self.settings.search_provider != "none":
 
@@ -162,6 +170,13 @@ class Runtime:
 
             tools.append(web_search)
         return tools
+
+    def model_for(self, model_name=None):
+        if not model_name or model_name == self.settings.model:
+            return self.model
+        if not self.model_factory or not self.client:
+            raise ValueError("The selected model cannot be initialized")
+        return self.model_factory(model=model_name, openai_client=self.client)
 
     async def search(self, query):
         settings = self.settings
@@ -188,9 +203,9 @@ class Runtime:
                 return {"error": "联网服务请求失败，请检查配置或额度"}
             return {"results": json.dumps(response.json(), ensure_ascii=False)[:24000]}
 
-    def start(self, run, prompt, files, skill_names, geoflow_context=None):
+    def start(self, run, prompt, files, skill_names, geoflow_context=None, model_name=None):
         task = asyncio.create_task(
-            self.execute(run, prompt, files, skill_names, geoflow_context)
+            self.execute(run, prompt, files, skill_names, geoflow_context, model_name)
         )
         self.tasks[run["id"]] = task
 
@@ -208,7 +223,7 @@ class Runtime:
 
         task.add_done_callback(finished)
 
-    async def execute(self, run, prompt, files, skill_names, geoflow_context=None):
+    async def execute(self, run, prompt, files, skill_names, geoflow_context=None, model_name=None):
         run_id, thread_id = run["id"], run["thread_id"]
         generated = []
         output, status, error = "", "completed", ""
@@ -248,7 +263,7 @@ class Runtime:
                 agent = Agent(
                     name="智能体",
                     instructions=instructions,
-                    model=self.model,
+                    model=self.model_for(model_name),
                     tools=self.tools(thread_id, generated),
                     mcp_servers=servers,
                 )
@@ -309,12 +324,17 @@ class Runtime:
         for key, label in (
             ("title_libraries", "标题库"),
             ("knowledge_bases", "知识库"),
+            ("keyword_libraries", "关键词库"),
+            ("keywords", "关键词"),
+            ("image_libraries", "图片库"),
+            ("social_accounts", "发布账号"),
         ):
             values = context.get(key, [])
             if not isinstance(values, list):
                 continue
             names = [
-                str(item["name"])
+                f"{item['name']} (ID={item.get('id')}, "
+                f"library_id={item.get('library_id', '-')}, platform={item.get('platform', '-')})"
                 for item in values
                 if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]
             ]

@@ -57,6 +57,8 @@ class Store:
                     id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES threads(id),
                     name TEXT NOT NULL, media_type TEXT NOT NULL, content BLOB NOT NULL,
                     created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS app_config(
+                    key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
 
     @contextmanager
@@ -69,6 +71,18 @@ class Store:
     def query(self, sql, params=()):
         with self.connect() as db:
             return [dict(row) for row in db.execute(sql, params)]
+
+    def config(self, key, default=""):
+        rows = self.query("SELECT value FROM app_config WHERE key=?", (key,))
+        return rows[0]["value"] if rows else default
+
+    def set_config(self, key, value):
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO app_config(key,value) VALUES(?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
 
     def create_user(self, username, password, *, admin=False):
         name = username.strip().lower()

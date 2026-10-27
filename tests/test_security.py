@@ -37,6 +37,54 @@ async def test_auth_csrf_and_user_file_isolation(platform):
         assert (await admin.get(f"/api/files/{file['id']}/text")).json() == {"text": "private"}
 
 
+async def test_model_config_is_admin_only_and_persisted(platform):
+    app, _ = platform
+    app.state.runtime.settings.model = "env-default"
+    app.state.runtime.settings.models = "env-option,"
+    app.state.runtime.settings.vision_model = "env-vision"
+    app.state.store.create_user("model-member", "member-test-password")
+    async with browser(app) as admin, browser(app) as member:
+        await login(admin)
+        await login(member, "model-member", "member-test-password")
+        config = {"models": ["chat-model", "vision-model"], "vision_model": "vision-model"}
+        assert (await member.get("/api/models/config")).status_code == 403
+        assert (await member.put("/api/models/config", json=config)).status_code == 403
+        assert (await admin.put("/api/models/config", json=config)).status_code == 200
+        caps = (await member.get("/api/capabilities")).json()
+        assert "chat-model" in caps["models"]
+        assert "vision-model" in caps["models"]
+        assert "" not in caps["models"]
+        configured = (await admin.get("/api/models/config")).json()
+        assert configured["managed_models"] == ["chat-model", "vision-model"]
+        assert configured["environment_models"] == [
+            "env-default",
+            "env-option",
+            "env-vision",
+        ]
+        assert set(app.state.runtime.available_models) == set(caps["models"])
+
+
+async def test_selected_model_is_forwarded_to_runtime(platform, monkeypatch):
+    app, _ = platform
+    app.state.store.set_config("models", "alternate-model")
+    app.state.runtime.available_models.append("alternate-model")
+    selected = []
+    monkeypatch.setattr(
+        app.state.runtime,
+        "start",
+        lambda run, prompt, files, skills, geoflow_context, model_name: selected.append(model_name),
+    )
+    async with browser(app) as client:
+        await login(client)
+        thread = (await client.post("/api/threads")).json()["id"]
+        response = await client.post(
+            f"/api/threads/{thread}/messages",
+            json={"content": "Use another model", "model": "alternate-model"},
+        )
+        assert response.status_code == 202
+        assert selected == ["alternate-model"]
+
+
 async def test_password_change_revokes_sessions_and_demo_is_not_reset(platform, settings):
     app, _ = platform
     async with browser(app) as client, browser(app) as other:

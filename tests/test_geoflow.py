@@ -112,6 +112,120 @@ async def test_geoflow_material_libraries_rejects_arbitrary_type():
         await client.material_libraries("../../articles")
 
 
+async def test_keyword_items_support_pagination_and_standard_material_aliases(monkeypatch):
+    seen = []
+    factory = httpx.AsyncClient
+
+    def handle(request):
+        seen.append(request)
+        return httpx.Response(200, json={"success": True, "data": {"items": []}})
+
+    monkeypatch.setattr(
+        "app.geoflow.httpx.AsyncClient",
+        lambda **kwargs: factory(transport=httpx.MockTransport(handle), **kwargs),
+    )
+    client = GeoFlowClient("https://geo.example.test", "token")
+    await client.material_items("keyword-libraries", 4, page=3)
+    assert seen[0].url.path == "/api/v1/materials/keyword_libraries/4/items"
+    assert dict(seen[0].url.params) == {"page": "3", "per_page": "50"}
+    with pytest.raises(ValueError):
+        await client.material_items("../../articles", 4)
+
+
+async def test_task_resource_endpoints_require_login_and_preserve_pagination(platform, monkeypatch):
+    from tests.conftest import browser, login
+
+    app, _ = platform
+    geo = GeoFlowClient("https://geo.example.test", "token")
+    app.state.runtime.geoflow = geo
+
+    async def items(material_type, material_id, page=1):
+        assert (material_type, material_id, page) == ("keywords", 4, 2)
+        return {"items": [{"id": 7, "keyword": "品牌词"}], "pagination": {"page": 2}}
+
+    async def accounts():
+        return {"items": [{"id": 8, "account_name": "品牌账号"}]}
+
+    monkeypatch.setattr(geo, "material_items", items)
+    monkeypatch.setattr(geo, "social_accounts", accounts)
+    async with browser(app) as client:
+        path = "/api/geoflow/materials/keywords/4/items?page=2"
+        assert (await client.get(path)).status_code == 401
+        assert (await client.get("/api/geoflow/social/accounts")).status_code == 401
+        await login(client)
+        assert (await client.get(path)).json()["items"][0]["keyword"] == "品牌词"
+        assert (await client.get("/api/geoflow/social/accounts")).json()["items"][0]["id"] == 8
+        assert (await client.get("/api/geoflow/social/secrets")).status_code == 422
+
+
+@pytest.mark.parametrize("invalid", [None, "library", "keyword", "account"])
+async def test_selected_task_resources_are_validated_and_forwarded(platform, monkeypatch, invalid):
+    from tests.conftest import browser, login
+
+    app, _ = platform
+    geo = GeoFlowClient("https://geo.example.test", "token")
+    app.state.runtime.geoflow = geo
+    captured = []
+
+    async def catalog():
+        return {
+            "knowledge_bases": [{"id": 1, "name": "品牌知识"}],
+            "title_libraries": [{"id": 2, "name": "选题"}],
+            "keyword_libraries": [{"id": 3, "name": "种子词库"}],
+            "image_libraries": [{"id": 4, "name": "品牌配图"}],
+        }
+
+    async def items(material_type, material_id, page=1):
+        assert (material_type, material_id, page) == ("keywords", 3, 2)
+        return {"items": [{"id": 6, "keyword": "真实关键词"}]}
+
+    async def accounts():
+        return {"items": [{"id": 5, "account_name": "品牌账号", "platform": "weibo"}]}
+
+    monkeypatch.setattr(geo, "catalog", catalog)
+    monkeypatch.setattr(geo, "material_items", items)
+    monkeypatch.setattr(geo, "social_accounts", accounts)
+    monkeypatch.setattr(app.state.runtime, "start", lambda *args: captured.append(args[4]))
+    context = {
+        "knowledge_base_ids": [1],
+        "title_library_ids": [2],
+        "keyword_library_ids": [3],
+        "image_library_ids": [4],
+        "social_account_ids": [5],
+        "keywords": [{"library_id": 3, "item_id": 6, "page": 2}],
+    }
+    if invalid == "library":
+        context["keyword_library_ids"] = [99]
+    elif invalid == "keyword":
+        context["keywords"][0]["item_id"] = 99
+    elif invalid == "account":
+        context["social_account_ids"] = [99]
+    async with browser(app) as client:
+        await login(client)
+        thread = (await client.post("/api/threads")).json()["id"]
+        response = await client.post(
+            f"/api/threads/{thread}/messages",
+            json={"content": "执行所选任务", "geoflow_context": context},
+        )
+    if invalid:
+        assert response.status_code == 422
+        assert not captured
+        assert not app.state.store.query("SELECT * FROM runs")
+    else:
+        assert response.status_code == 202, response.text
+        assert captured[0]["keywords"] == [{"id": 6, "library_id": 3, "name": "真实关键词"}]
+        prompt = app.state.runtime._geoflow_context_prompt(captured[0])
+        for expected in (
+            "品牌知识",
+            "种子词库",
+            "真实关键词",
+            "品牌配图",
+            "品牌账号",
+            "platform=weibo",
+        ):
+            assert expected in prompt
+
+
 async def test_social_publish_calls_use_selected_account_and_idempotency(monkeypatch):
     seen = []
 

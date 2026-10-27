@@ -12,6 +12,17 @@ class GeoFlowError(RuntimeError):
 
 
 class GeoFlowClient:
+    MATERIAL_TYPES = {
+        alias: canonical
+        for canonical, aliases in (
+            ("knowledge_bases", ("knowledge", "knowledge_base", "knowledge_bases")),
+            ("title_libraries", ("title", "title_library", "title_libraries")),
+            ("keyword_libraries", ("keyword", "keywords", "keyword_libraries")),
+            ("image_libraries", ("image", "images", "image_libraries")),
+        )
+        for alias in aliases
+    }
+
     def __init__(self, base_url: str, token: str, timeout: int = 30, verify_tls: bool = True):
         self.base_url = base_url.rstrip("/")
         self.token = token
@@ -63,15 +74,7 @@ class GeoFlowClient:
         useful when a UI needs search or pagination.  Keep the allow-list here so a caller
         cannot turn this integration into an arbitrary path proxy.
         """
-        aliases = {
-            "knowledge": "knowledge_bases",
-            "knowledge_base": "knowledge_bases",
-            "knowledge_bases": "knowledge_bases",
-            "title": "title_libraries",
-            "title_library": "title_libraries",
-            "title_libraries": "title_libraries",
-        }
-        normalized = aliases.get(material_type.strip().lower())
+        normalized = self.MATERIAL_TYPES.get(material_type.strip().lower().replace("-", "_"))
         if normalized is None:
             raise ValueError("Unsupported GEOFlow material type")
         params: dict[str, Any] = {
@@ -82,20 +85,16 @@ class GeoFlowClient:
             params["search"] = search.strip()
         return await self.request("GET", f"materials/{normalized}", params=params)
 
-    async def material_items(self, material_type: str, material_id: int) -> dict[str, Any]:
-        aliases = {
-            "knowledge": "knowledge_bases",
-            "knowledge_base": "knowledge_bases",
-            "knowledge_bases": "knowledge_bases",
-            "title": "title_libraries",
-            "title_library": "title_libraries",
-            "title_libraries": "title_libraries",
-        }
-        normalized = aliases.get(material_type.strip().lower())
+    async def material_items(
+        self, material_type: str, material_id: int, page: int = 1, per_page: int = 50
+    ) -> dict[str, Any]:
+        normalized = self.MATERIAL_TYPES.get(material_type.strip().lower().replace("-", "_"))
         if normalized is None or material_id < 1:
             raise ValueError("Unsupported GEOFlow material selection")
         return await self.request(
-            "GET", f"materials/{normalized}/{material_id}/items", params={"page": 1, "per_page": 20}
+            "GET",
+            f"materials/{normalized}/{material_id}/items",
+            params={"page": max(1, page), "per_page": min(100, max(1, per_page))},
         )
 
     async def list_articles(self, search: str = "", status: str = "draft") -> dict[str, Any]:

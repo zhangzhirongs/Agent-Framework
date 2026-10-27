@@ -26,6 +26,22 @@ async def test_chat_stream_and_history_persist(platform):
         assert "test-only" not in (await client.get("/api/capabilities")).text
 
 
+async def test_selected_model_reaches_provider_request(platform):
+    from agents import OpenAIChatCompletionsModel
+
+    app, provider = platform
+    runtime = app.state.runtime
+    runtime.settings.model = "test-only"
+    runtime.client = provider.client
+    runtime.model_factory = OpenAIChatCompletionsModel
+    runtime.available_models.append("alternate-model")
+    async with browser(app) as client:
+        await login(client)
+        thread = (await client.post("/api/threads")).json()["id"]
+        await run_message(client, app, thread, "Use the selected model", model="alternate-model")
+    assert provider.requests[-1]["model"] == "alternate-model"
+
+
 async def test_model_loads_standard_skill_and_generates_downloadable_file(platform):
     app, provider = platform
     async with browser(app) as client:
@@ -149,3 +165,17 @@ async def test_runtime_registers_geoflow_social_tools(platform):
         "geoflow_enqueue_social_publication",
         "geoflow_get_social_job",
     } <= names
+
+
+async def test_runtime_creates_the_explicitly_selected_model(platform):
+    app, _ = platform
+    runtime = app.state.runtime
+    created = []
+    runtime.settings.model = "default-model"
+    runtime.client = object()
+    runtime.model_factory = lambda *, model, openai_client: created.append(model) or model
+
+    assert runtime.model_for("alternate-model") == "alternate-model"
+    assert created == ["alternate-model"]
+    assert runtime.model_for("default-model") is runtime.model
+    runtime.client = None
