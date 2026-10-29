@@ -405,6 +405,8 @@ def create_app(settings=None, model=None):
         runs = store.query(
             "SELECT * FROM runs WHERE thread_id=? ORDER BY created DESC", (thread_id,)
         )
+        for run in runs:
+            run["usage"] = json.loads(run["usage"])
         return {"thread": thread, "messages": messages, "files": files, "runs": runs}
 
     @app.delete("/api/threads/{thread_id}")
@@ -556,7 +558,9 @@ def create_app(settings=None, model=None):
         )
         if not rows:
             raise KeyError("任务不存在")
-        return rows[0]
+        row = rows[0]
+        row["usage"] = json.loads(row["usage"])
+        return row
 
     @app.post("/api/runs/{run_id}/cancel")
     async def cancel(run_id: str, user=Depends(authenticated)):

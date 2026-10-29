@@ -24,6 +24,7 @@ def settings(tmp_path):
 class Provider:
     def __init__(self):
         self.requests = []
+        self.report_usage = True
         self.client = AsyncOpenAI(
             api_key="test-only",
             base_url="http://model.example.test/v1",
@@ -46,16 +47,20 @@ class Provider:
                 {"filename": "note.md", "content": "# Note\nDone"},
             )
         elif last["role"] == "user" and "use-mcp" in text:
-            tool_name = next(
-                t["function"]["name"] for t in body["tools"] if "ping" in t["function"]["name"]
-            )
+            tool_name = "list_mcp_tools"
+            arguments = {"server": "example", "query": "ping", "offset": 0}
+        elif last["role"] == "tool" and '"name": "ping"' in text.replace('\\"', '"'):
+            tool_name = "load_mcp_tool"
+            arguments = {"server": "example", "name": "ping"}
+        elif last["role"] == "tool" and "function" in text and "mcp_" in text:
+            tool_name = json.loads(last["content"])["function"]
             arguments = {"value": "hello"}
         delta = (
             {
                 "tool_calls": [
                     {
                         "index": 0,
-                        "id": "call-test",
+                        "id": f"call-test-{len(self.requests)}",
                         "type": "function",
                         "function": {"name": tool_name, "arguments": json.dumps(arguments)},
                     }
@@ -88,6 +93,12 @@ class Provider:
                 ],
             },
         ]
+        if self.report_usage:
+            chunks.append({
+                "id": "test", "object": "chat.completion.chunk", "created": 1,
+                "model": "test-only", "choices": [],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 5, "total_tokens": 25},
+            })
         content = "".join("data: " + json.dumps(c, ensure_ascii=False) + "\n\n" for c in chunks)
         return httpx.Response(
             200, content=content + "data: [DONE]\n\n", headers={"content-type": "text/event-stream"}

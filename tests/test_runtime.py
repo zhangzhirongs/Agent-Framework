@@ -73,6 +73,14 @@ async def test_real_stdio_mcp_is_called_by_agent(platform, settings):
         await run_message(client, app, thread, "use-mcp")
         tools = [m for m in provider.requests[-1]["messages"] if m["role"] == "tool"]
         assert "pong: hello" in json.dumps(tools[-1]["content"])
+        assert len(provider.requests) == 4
+        initial = {t["function"]["name"] for t in provider.requests[0]["tools"]}
+        assert "ping" not in initial and "list_mcp_tools" in initial
+        assert any(t["function"]["name"].startswith("mcp_")
+                   for t in provider.requests[2]["tools"])
+        await run_message(client, app, thread, "Next question")
+        assert not any(t["function"]["name"].startswith("mcp_")
+                       for t in provider.requests[-1]["tools"])
 
 
 async def test_provider_failure_is_redacted_and_task_has_terminal_state(platform, monkeypatch):

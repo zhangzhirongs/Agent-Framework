@@ -1443,6 +1443,14 @@ function Workspace({
                     {detail.runs[0].finished
                       ? ` · ${Math.max(0, Math.round(detail.runs[0].finished! - detail.runs[0].created))} 秒`
                       : ""}
+                    {!!detail.runs[0].usage?.requests && (
+                      <>
+                        {` · ${detail.runs[0].usage.requests} 次模型请求`}
+                        {detail.runs[0].usage.usage_reported
+                          ? ` · 输入 ${detail.runs[0].usage.input_tokens?.toLocaleString()} / 输出 ${detail.runs[0].usage.output_tokens?.toLocaleString()} tokens`
+                          : " · 服务未返回 token 用量"}
+                      </>
+                    )}
                   </p>
                 )}
                 <div ref={bottom} />

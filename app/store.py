@@ -60,6 +60,16 @@ class Store:
                 CREATE TABLE IF NOT EXISTS app_config(
                     key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(runs)")}
+            if "usage" not in columns:
+                db.execute("ALTER TABLE runs ADD COLUMN usage TEXT NOT NULL DEFAULT '{}'")
+
+    def save_run_usage(self, run_id, usage):
+        with self.connect() as db:
+            db.execute(
+                "UPDATE runs SET usage=? WHERE id=?",
+                (json.dumps(usage, ensure_ascii=False), run_id),
+            )
 
     @contextmanager
     def connect(self):
