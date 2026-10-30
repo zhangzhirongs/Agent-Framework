@@ -18,11 +18,12 @@ class Settings(BaseSettings):
     vision_enabled: bool = False
     model_timeout: int = Field(default=120, ge=10, le=1800)
     max_turns: int = Field(default=12, ge=1, le=50)
-    history_turns: int = Field(default=8, ge=0, le=100)
-    max_input_bytes: int = Field(default=64000, ge=4000, le=1000000)
-    max_tool_output_chars: int = Field(default=8000, ge=1000, le=100000)
+    history_turns: int = Field(default=4, ge=0, le=100)
+    history_message_chars: int = Field(default=4000, ge=256, le=100000)
+    max_input_bytes: int = Field(default=128000, ge=4000, le=1000000)
+    max_tool_output_chars: int = Field(default=12000, ge=1000, le=100000)
     max_output_tokens: int = Field(default=4096, ge=256, le=32768)
-    max_run_input_bytes: int = Field(default=256000, ge=4000, le=10000000)
+    max_run_input_bytes: int = Field(default=512000, ge=4000, le=10000000)
     max_concurrent_runs: int = Field(default=2, ge=1, le=32)
     search_provider: Literal["none", "tavily", "brave", "searxng"] = "none"
     search_api_key: SecretStr = SecretStr("")

@@ -25,6 +25,7 @@ class Provider:
     def __init__(self):
         self.requests = []
         self.report_usage = True
+        self.file_content = "# Note\nDone"
         self.client = AsyncOpenAI(
             api_key="test-only",
             base_url="http://model.example.test/v1",
@@ -44,17 +45,29 @@ class Provider:
         elif last["role"] == "user" and "write-file" in text:
             tool_name, arguments = (
                 "write_text_file",
-                {"filename": "note.md", "content": "# Note\nDone"},
+                {"filename": "note.md", "content": self.file_content},
             )
         elif last["role"] == "user" and "use-mcp" in text:
-            tool_name = "list_mcp_tools"
-            arguments = {"server": "example", "query": "ping", "offset": 0}
-        elif last["role"] == "tool" and '"name": "ping"' in text.replace('\\"', '"'):
-            tool_name = "load_mcp_tool"
-            arguments = {"server": "example", "name": "ping"}
-        elif last["role"] == "tool" and "function" in text and "mcp_" in text:
-            tool_name = json.loads(last["content"])["function"]
-            arguments = {"value": "hello"}
+            tool_name, arguments = "find_tools", {"query": "ping", "offset": 0}
+        elif last["role"] == "tool":
+            try:
+                result = json.loads(last["content"])
+            except (json.JSONDecodeError, TypeError):
+                result = {}
+            if not isinstance(result, dict):
+                result = {}
+            found = result.get("tools", [])
+            if found and found[0].get("function"):
+                tool_name = found[0]["function"]
+                if tool_name == "load_skill":
+                    arguments = {"name": "example-note"}
+                elif tool_name == "write_text_file":
+                    arguments = {"filename": "note.md", "content": self.file_content}
+                else:
+                    arguments = {"value": "hello"}
+        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        if tool_name and tool_name not in names:
+            arguments, tool_name = {"query": tool_name, "offset": 0}, "find_tools"
         delta = (
             {
                 "tool_calls": [

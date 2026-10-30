@@ -1449,6 +1449,10 @@ function Workspace({
                         {detail.runs[0].usage.usage_reported
                           ? ` · 输入 ${detail.runs[0].usage.input_tokens?.toLocaleString()} / 输出 ${detail.runs[0].usage.output_tokens?.toLocaleString()} tokens`
                           : " · 服务未返回 token 用量"}
+                        {!!detail.runs[0].usage.cached_input_tokens &&
+                          ` · 缓存输入 ${detail.runs[0].usage.cached_input_tokens.toLocaleString()}`}
+                        {!!detail.runs[0].usage.reasoning_output_tokens &&
+                          ` · 其中推理 ${detail.runs[0].usage.reasoning_output_tokens.toLocaleString()}`}
                       </>
                     )}
                   </p>

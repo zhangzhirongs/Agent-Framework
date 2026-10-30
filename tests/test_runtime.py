@@ -49,7 +49,9 @@ async def test_model_loads_standard_skill_and_generates_downloadable_file(platfo
         thread = (await client.post("/api/threads")).json()["id"]
         await run_message(client, app, thread, "use-skill", skills=["example-note"])
         tools = [m for m in provider.requests[-1]["messages"] if m["role"] == "tool"]
-        assert "工作笔记" in tools[0]["content"]
+        assert "已加载" in tools[-1]["content"]
+        sent = json.dumps(provider.requests[-1]["messages"], ensure_ascii=False)
+        assert sent.count("name: example-note") == 1
         await run_message(client, app, thread, "write-file")
         detail = (await client.get(f"/api/threads/{thread}")).json()
         key = detail["messages"][-1]["file_ids"][0]
@@ -73,11 +75,11 @@ async def test_real_stdio_mcp_is_called_by_agent(platform, settings):
         await run_message(client, app, thread, "use-mcp")
         tools = [m for m in provider.requests[-1]["messages"] if m["role"] == "tool"]
         assert "pong: hello" in json.dumps(tools[-1]["content"])
-        assert len(provider.requests) == 4
+        assert len(provider.requests) == 3
         initial = {t["function"]["name"] for t in provider.requests[0]["tools"]}
-        assert "ping" not in initial and "list_mcp_tools" in initial
+        assert initial == {"find_tools"}
         assert any(t["function"]["name"].startswith("mcp_")
-                   for t in provider.requests[2]["tools"])
+                       for t in provider.requests[1]["tools"])
         await run_message(client, app, thread, "Next question")
         assert not any(t["function"]["name"].startswith("mcp_")
                        for t in provider.requests[-1]["tools"])
